@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:rdptest;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: false
+app:
+  jwt:
+    secret: YjA5NDQ4ZjJmOTdmNDU5ZjkwN2Y4ZjQ4NjZhYjAzMTBhYWM0NmQwY2JhMzJlY2Vi
