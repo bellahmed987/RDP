@@ -20,7 +20,8 @@ if (-not (Test-Path $envFile)) {
         "ADMIN_PASSWORD=$adminPassword",
         "SEED_DEMO_PASSWORD=$demoPassword",
         'FCM_ENABLED=false',
-        'FIREBASE_CREDENTIALS='
+        'FIREBASE_CREDENTIALS=',
+        'GOOGLE_CLIENT_ID='
     )
     [IO.File]::WriteAllLines($envFile, $lines, [Text.UTF8Encoding]::new($false))
 }

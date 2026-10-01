@@ -36,6 +36,8 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://10.0.2.2}
   maps:
     api-key: ${GOOGLE_MAPS_API_KEY:}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
   firebase:
     enabled: ${FCM_ENABLED:false}
     credentials: ${FIREBASE_CREDENTIALS:}

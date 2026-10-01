@@ -11,6 +11,7 @@ import java.util.Optional;
 
 public interface AppUserRepository extends JpaRepository<AppUser, Long> {
     Optional<AppUser> findByEmailIgnoreCase(String email);
+    Optional<AppUser> findByGoogleSubject(String googleSubject);
     boolean existsByEmailIgnoreCase(String email);
     long countByRole(Role role);
     long countByStatus(AccountStatus status);

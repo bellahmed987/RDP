@@ -1,6 +1,6 @@
 # ShareKind (Resource Distribution Platform)
 
-An Android-first community platform for sharing surplus resources. Donors can publish items with up to five PNG or JPEG photos and arrange pickup directly with recipients; there is no delivery service.
+An Android-first community platform for sharing surplus resources. Donors can publish items with up to five PNG or JPEG photos and arrange pickup directly with recipients; users can also sign in with Google after OAuth setup. There is no delivery service.
 
 ## Start locally
 

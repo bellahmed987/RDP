@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -9,6 +10,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'core/api.dart';
+
+const googleServerClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
 
 void main() => runApp(const RdpApp());
 
@@ -85,6 +88,7 @@ class _AuthScreenState extends State<AuthScreen> {
   String role = 'RECIPIENT';
   bool register = false, busy = false;
   String? error;
+  Future<void>? googleInitialization;
   Future<void> submit() async {
     setState(() {
       busy = true;
@@ -112,6 +116,100 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) setState(() => busy = false);
     }
   }
+
+  Future<void> signInWithGoogle() async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      if (googleServerClientId.isEmpty) {
+        throw StateError(
+          'Google sign-in needs GOOGLE_CLIENT_ID in .env.local. See docs/SETUP.md.',
+        );
+      }
+      googleInitialization ??= GoogleSignIn.instance.initialize(
+        serverClientId: googleServerClientId,
+      );
+      await googleInitialization;
+      await GoogleSignIn.instance.signOut();
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw StateError('Google did not return an ID token. Check OAuth setup.');
+      }
+
+      var result = Map<String, dynamic>.from(
+        (await Api.instance.dio.post(
+          '/auth/google',
+          data: {'idToken': idToken, if (register) 'role': role},
+        )).data,
+      );
+      if (result['requiresRole'] == true) {
+        final selectedRole = await chooseGoogleAccountRole(account.email);
+        if (selectedRole == null) return;
+        result = Map<String, dynamic>.from(
+          (await Api.instance.dio.post(
+            '/auth/google',
+            data: {'idToken': idToken, 'role': selectedRole},
+          )).data,
+        );
+      }
+
+      final auth = Map<String, dynamic>.from(result['auth'] as Map);
+      await Api.instance.setToken(auth['token'] as String);
+      if (mounted) widget.onSignedIn(Map<String, dynamic>.from(auth['user']));
+    } on DioException catch (e) {
+      if (mounted) {
+        setState(
+          () => error = e.response?.data is Map
+              ? e.response!.data['message']?.toString() ?? 'Google sign-in failed.'
+              : 'Cannot reach the server. Start the backend and try again.',
+        );
+      }
+    } on GoogleSignInException catch (e) {
+      if (mounted && e.code != GoogleSignInExceptionCode.canceled) {
+        setState(
+          () => error = e.description ?? 'Google sign-in could not be completed.',
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<String?> chooseGoogleAccountRole(String email) => showDialog<String>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Choose your account type'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('New Google account: $email'),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.volunteer_activism),
+            title: const Text('Recipient'),
+            onTap: () => Navigator.pop(dialogContext, 'RECIPIENT'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.card_giftcard),
+            title: const Text('Donor'),
+            onTap: () => Navigator.pop(dialogContext, 'DONOR'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancel'),
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -187,6 +285,12 @@ class _AuthScreenState extends State<AuthScreen> {
                         ? 'Create account'
                         : 'Sign in',
                   ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : signInWithGoogle,
+                  icon: const Icon(Icons.g_mobiledata, size: 28),
+                  label: const Text('Continue with Google'),
                 ),
                 TextButton(
                   onPressed: () => setState(() {
