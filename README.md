@@ -1,6 +1,6 @@
 # ShareKind (Resource Distribution Platform)
 
-An Android-first community platform for sharing surplus resources. Donors publish items and arrange pickup directly with recipients; there is no delivery service.
+An Android-first community platform for sharing surplus resources. Donors can publish items with up to five PNG or JPEG photos and arrange pickup directly with recipients; there is no delivery service.
 
 ## Start locally
 
@@ -14,7 +14,7 @@ The local administrator and demo credentials are written to the ignored README.l
 ## Project folders
 
 - backend: Java 21, Spring Boot REST API, MariaDB, JWT security, STOMP chat, OpenAPI, local recommendations and chatbot providers.
-- mobile: Flutter Android app with secure token storage and REST/WebSocket client.
+- mobile: Flutter Android app with secure token storage, product photo selection and upload, and REST/WebSocket client.
 - docs: setup, API overview, tests, and optional integrations.
 - scripts: PowerShell commands to start, test, and build.
 

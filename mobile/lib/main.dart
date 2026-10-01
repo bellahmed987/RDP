@@ -1,10 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'core/api.dart';
 
@@ -212,6 +214,7 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   int index = 0;
+  final myDonationsKey = GlobalKey<_DonationListState>();
   @override
   Widget build(BuildContext context) {
     final role = widget.user['role'];
@@ -230,7 +233,7 @@ class _HomeState extends State<Home> {
           ]
         : donor
         ? [
-            const DonationList(mine: true),
+            DonationList(mine: true, key: myDonationsKey),
             const RequestList(incoming: true),
             ProfilePage(user: widget.user),
           ]
@@ -276,7 +279,9 @@ class _HomeState extends State<Home> {
             IconButton(
               onPressed: () => showDialog(
                 context: context,
-                builder: (_) => const DonationForm(),
+                builder: (_) => DonationForm(
+                  onSaved: () => myDonationsKey.currentState?.refresh(),
+                ),
               ),
               icon: const Icon(Icons.add_circle_outline),
             ),
@@ -601,6 +606,7 @@ class _DonationCardState extends State<DonationCard> {
                 ),
             ],
           ),
+          ..._donationPhotoStrip(item),
           Text(
             '${pretty(item['category'] ?? '')} · ${item['quantity'] ?? 1} available',
           ),
@@ -687,8 +693,42 @@ class _DonationCardState extends State<DonationCard> {
   }
 }
 
+List<Widget> _donationPhotoStrip(Map<String, dynamic> item) {
+  final paths = (item['imageUrls'] as List? ?? []).whereType<String>().toList();
+  if (paths.isEmpty) return const [];
+  final baseUri = Uri.parse(Api.instance.dio.options.baseUrl);
+  return [
+    const SizedBox(height: 12),
+    SizedBox(
+      height: 150,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: paths.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (context, index) => ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.network(
+            baseUri.resolve(paths[index]).toString(),
+            width: 200,
+            height: 150,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(
+              width: 200,
+              height: 150,
+              color: Colors.black12,
+              alignment: Alignment.center,
+              child: const Icon(Icons.broken_image_outlined),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ];
+}
+
 class DonationForm extends StatefulWidget {
-  const DonationForm({super.key});
+  const DonationForm({super.key, this.onSaved});
+  final VoidCallback? onSaved;
   @override
   State<DonationForm> createState() => _DonationFormState();
 }
@@ -699,11 +739,17 @@ class _DonationFormState extends State<DonationForm> {
       qty = TextEditingController(text: '1'),
       address = TextEditingController(),
       city = TextEditingController();
+  final ImagePicker imagePicker = ImagePicker();
+  final Set<String> uploadedPhotoPaths = {};
+  final List<XFile> photos = [];
   String cat = 'FOOD', condition = 'GOOD';
   bool busy = false;
+  int? createdDonationId;
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Share a resource'),
+    title: Text(
+      createdDonationId == null ? 'Share a resource' : 'Finish photo upload',
+    ),
     content: SizedBox(
       width: 420,
       child: SingleChildScrollView(
@@ -727,6 +773,49 @@ class _DonationFormState extends State<DonationForm> {
               controller: description,
               maxLines: 3,
               decoration: const InputDecoration(labelText: 'Description'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: Text('Product photos (${photos.length}/5)')),
+                TextButton.icon(
+                  onPressed: busy || createdDonationId != null
+                      ? null
+                      : pickPhotos,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: const Text('Add photos'),
+                ),
+              ],
+            ),
+            if (photos.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(photos.length, (index) {
+                  final photo = photos[index];
+                  return InputChip(
+                    avatar: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.file(
+                        File(photo.path),
+                        width: 36,
+                        height: 36,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    label: Text('Photo ${index + 1}'),
+                    onDeleted: busy || createdDonationId != null
+                        ? null
+                        : () => setState(() => photos.removeAt(index)),
+                  );
+                }),
+              ),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'PNG or JPEG, up to 8 MB each. Maximum 5 photos.',
+                style: TextStyle(fontSize: 12),
+              ),
             ),
             TextField(
               controller: qty,
@@ -756,40 +845,119 @@ class _DonationFormState extends State<DonationForm> {
     ),
     actions: [
       TextButton(
-        onPressed: () => Navigator.pop(context),
+        onPressed: busy ? null : () => Navigator.pop(context),
         child: const Text('Cancel'),
       ),
       FilledButton(
         onPressed: busy ? null : save,
-        child: Text(busy ? 'Saving…' : 'Publish'),
+        child: Text(
+          busy
+              ? (createdDonationId == null ? 'Publishing…' : 'Uploading…')
+              : (createdDonationId == null ? 'Publish' : 'Retry photo upload'),
+        ),
       ),
     ],
   );
+
+  Future<void> pickPhotos() async {
+    final remaining = 5 - photos.length;
+    if (remaining <= 0) {
+      snack(context, 'A donation can have up to 5 photos.');
+      return;
+    }
+    try {
+      final picked = await imagePicker.pickMultiImage(
+        limit: remaining,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+      if (!mounted || picked.isEmpty) return;
+      final accepted = picked.take(remaining).toList();
+      final supported = accepted.where((photo) {
+        final extension = photo.name.toLowerCase().split('.').last;
+        return extension == 'png' || extension == 'jpg' || extension == 'jpeg';
+      }).toList();
+      setState(() => photos.addAll(supported));
+      if (supported.length != accepted.length) {
+        snack(context, 'Only PNG and JPEG photos are supported.');
+      }
+      if (picked.length > remaining) {
+        snack(context, 'Only five photos can be added to one donation.');
+      }
+    } catch (_) {
+      if (mounted) snack(context, 'Could not open the photo picker.');
+    }
+  }
+
   Future<void> save() async {
+    if (busy) return;
     setState(() => busy = true);
     try {
-      await Api.instance.dio.post(
-        '/donations',
-        data: {
-          'title': title.text,
-          'category': cat,
-          'description': description.text,
-          'condition': condition,
-          'quantity': int.tryParse(qty.text) ?? 1,
-          'pickupAddress': address.text,
-          'city': city.text,
-        },
-      );
-      if (mounted) Navigator.pop(context);
+      if (createdDonationId == null) {
+        final response = await Api.instance.dio.post(
+          '/donations',
+          data: {
+            'title': title.text,
+            'category': cat,
+            'description': description.text,
+            'condition': condition,
+            'quantity': int.tryParse(qty.text) ?? 1,
+            'pickupAddress': address.text,
+            'city': city.text,
+          },
+        );
+        final id = (response.data as Map<String, dynamic>)['id'];
+        if (id is! int) throw StateError('The donation was not returned.');
+        if (mounted) setState(() => createdDonationId = id);
+      }
+      await uploadPhotos();
+      if (mounted) {
+        widget.onSaved?.call();
+        Navigator.pop(context);
+      }
     } on DioException catch (e) {
       if (mounted) {
         snack(
           context,
-          e.response?.data?['message']?.toString() ?? 'Check required fields.',
+          e.response?.data?['message']?.toString() ??
+              (createdDonationId == null
+                  ? 'Check required fields.'
+                  : 'Donation posted, but a photo could not be uploaded. Tap Retry photo upload.'),
         );
       }
+    } on StateError catch (e) {
+      if (mounted) snack(context, e.message.toString());
     } finally {
       if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> uploadPhotos() async {
+    final donationId = createdDonationId;
+    if (donationId == null) return;
+    for (final photo in photos) {
+      if (uploadedPhotoPaths.contains(photo.path)) continue;
+      final extension = photo.name.toLowerCase().split('.').last;
+      final subtype = switch (extension) {
+        'png' => 'png',
+        'jpg' || 'jpeg' => 'jpeg',
+        _ => null,
+      };
+      if (subtype == null) {
+        throw StateError('Please choose PNG or JPEG photos.');
+      }
+      await Api.instance.dio.post(
+        '/donations/$donationId/images',
+        data: FormData.fromMap({
+          'file': await MultipartFile.fromFile(
+            photo.path,
+            filename: photo.name,
+            contentType: DioMediaType('image', subtype),
+          ),
+        }),
+      );
+      uploadedPhotoPaths.add(photo.path);
     }
   }
 }
