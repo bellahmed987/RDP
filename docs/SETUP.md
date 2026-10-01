@@ -19,20 +19,6 @@ For a physical phone on the same network:
     cd mobile
     flutter run --dart-define=API_BASE_URL=http://YOUR_COMPUTER_LAN_IP:8080/api
 
-## Google sign-in
-
-Google sign-in is optional and requires OAuth configuration in a Google Cloud project:
-
-1. Configure the OAuth consent screen and create an **Android** OAuth client for package `edu.rdp.resource_distribution_app`. While the consent screen is in Testing mode, add the Google accounts you’ll use under Test users.
-2. Add the SHA-1 fingerprint for the signing key you use. For the local debug key, run:
-
-       keytool -list -v -keystore "$env:USERPROFILE\.android\debug.keystore" -alias androiddebugkey -storepass android -keypass android
-
-3. Create a **Web application** OAuth client. Put that Web client ID in the ignored `.env.local` as `GOOGLE_CLIENT_ID=...`. This is a client ID, not a client secret.
-4. Restart the backend and run `scripts\start-mobile.ps1`. The script uses the same client ID for Flutter and the backend. For APK builds, `scripts\build-android.ps1` passes it to Flutter as well.
-
-The backend verifies Google's signed ID token before creating an app session. First-time Google users choose Donor or Recipient. Existing Donor and Recipient accounts with the same verified email are linked; Admin accounts must continue using administrator sign-in. Without `GOOGLE_CLIENT_ID`, password sign-in continues to work and Google sign-in reports that setup is required.
-
 Build a debug APK with scripts\build-android.ps1. Output path: mobile\build\app\outputs\flutter-apk\app-debug.apk.
 
 ## Optional Google Maps

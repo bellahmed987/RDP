@@ -20,8 +20,6 @@ public final class ApiDtos {
                            Role role, AccountStatus status, List<DonationCategory> preferredCategories,
                            Instant createdAt) {}
     public record AuthResponse(String token, String tokenType, UserView user) {}
-    public record GoogleAuthRequest(@NotBlank String idToken, Role role) {}
-    public record GoogleAuthResponse(boolean requiresRole, AuthResponse auth) {}
     public record ProfileUpdate(@Size(max = 120) String name, @Size(max = 32) String phone,
                                 @Size(max = 300) String address, @Size(max = 100) String city,
                                 @DecimalMin("-90.0") @DecimalMax("90.0") Double latitude,
