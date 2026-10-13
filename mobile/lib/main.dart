@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart' as fmap;
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:image_picker/image_picker.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -316,6 +317,7 @@ class _DonationListState extends State<DonationList> {
   String? category;
   double? nearbyLatitude, nearbyLongitude;
   double nearbyRadius = 5;
+  bool mapView = false;
   late Future<dynamic> future;
   static const cats = [
     'FOOD',
@@ -358,43 +360,32 @@ class _DonationListState extends State<DonationList> {
 
   void refresh() => setState(() => future = load());
   Future<void> chooseNearby() async {
-    final lat = TextEditingController(text: nearbyLatitude?.toString() ?? '');
-    final lon = TextEditingController(text: nearbyLongitude?.toString() ?? '');
+    ll.LatLng? selected = nearbyLatitude != null && nearbyLongitude != null
+        ? ll.LatLng(nearbyLatitude!, nearbyLongitude!)
+        : null;
+    if (!MapTilerMap.enabled) {
+      snack(
+        context,
+        'Configure MAPTILER_API_KEY in mobile/maptiler.env.json to choose a nearby location.',
+      );
+      return;
+    }
+    selected = await showDialog<ll.LatLng>(
+      context: context,
+      builder: (_) => MapLocationPicker(initialLocation: selected),
+    );
+    if (!mounted || selected == null) return;
     final radius = TextEditingController(text: nearbyRadius.toString());
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Nearby resources'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Enter your current coordinates. The app sends these to the server to find items within your radius.',
-            ),
-            TextField(
-              controller: lat,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-              decoration: const InputDecoration(labelText: 'Latitude'),
-            ),
-            TextField(
-              controller: lon,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-              decoration: const InputDecoration(labelText: 'Longitude'),
-            ),
-            TextField(
-              controller: radius,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Radius in km (up to 100)',
-              ),
-            ),
-          ],
+        content: TextField(
+          controller: radius,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Radius in km (up to 100)',
+          ),
         ),
         actions: [
           TextButton(
@@ -408,26 +399,15 @@ class _DonationListState extends State<DonationList> {
         ],
       ),
     );
-    if (!mounted) return;
-    if (ok != true) return;
-    final parsedLat = double.tryParse(lat.text),
-        parsedLon = double.tryParse(lon.text),
-        parsedRadius = double.tryParse(radius.text);
-    if (parsedLat == null ||
-        parsedLon == null ||
-        parsedRadius == null ||
-        parsedLat < -90 ||
-        parsedLat > 90 ||
-        parsedLon < -180 ||
-        parsedLon > 180 ||
-        parsedRadius <= 0 ||
-        parsedRadius > 100) {
-      snack(context, 'Enter valid coordinates and a radius up to 100 km.');
+    if (!mounted || ok != true) return;
+    final parsedRadius = double.tryParse(radius.text);
+    if (parsedRadius == null || parsedRadius <= 0 || parsedRadius > 100) {
+      snack(context, 'Enter a radius greater than 0 and up to 100 km.');
       return;
     }
     setState(() {
-      nearbyLatitude = parsedLat;
-      nearbyLongitude = parsedLon;
+      nearbyLatitude = selected!.latitude;
+      nearbyLongitude = selected.longitude;
       nearbyRadius = parsedRadius;
       future = load();
     });
@@ -473,7 +453,11 @@ class _DonationListState extends State<DonationList> {
                       refresh();
                     },
                   ),
-                  const Spacer(),
+                  IconButton(
+                    tooltip: mapView ? 'Show list' : 'Show map',
+                    onPressed: () => setState(() => mapView = !mapView),
+                    icon: Icon(mapView ? Icons.list_alt : Icons.map_outlined),
+                  ),
                   TextButton.icon(
                     onPressed: nearbyLatitude == null
                         ? chooseNearby
@@ -516,6 +500,29 @@ class _DonationListState extends State<DonationList> {
                 subtitle: widget.mine
                     ? 'Tap + to publish one.'
                     : 'Try another search.',
+              );
+            }
+            if (mapView) {
+              if (!MapTilerMap.enabled) {
+                return const Center(
+                  child: Text('MapTiler key is not configured.'),
+                );
+              }
+              final points = items
+                  .where(
+                    (x) =>
+                        x is Map &&
+                        x['latitude'] != null &&
+                        x['longitude'] != null,
+                  )
+                  .toList();
+              if (points.isEmpty) {
+                return const Center(
+                  child: Text('No listings have map locations yet.'),
+                );
+              }
+              return DonationBrowseMap(
+                items: points.cast<Map<String, dynamic>>(),
               );
             }
             return RefreshIndicator(
@@ -742,6 +749,7 @@ class _DonationFormState extends State<DonationForm> {
   final ImagePicker imagePicker = ImagePicker();
   final Set<String> uploadedPhotoPaths = {};
   final List<XFile> photos = [];
+  ll.LatLng? pickupLocation;
   String cat = 'FOOD', condition = 'GOOD';
   bool busy = false;
   int? createdDonationId;
@@ -835,6 +843,28 @@ class _DonationFormState extends State<DonationForm> {
               controller: address,
               decoration: const InputDecoration(labelText: 'Pickup address'),
             ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: busy || createdDonationId != null
+                    ? null
+                    : choosePickupLocation,
+                icon: const Icon(Icons.place_outlined),
+                label: Text(
+                  pickupLocation == null
+                      ? 'Choose pickup point on map'
+                      : 'Pickup point selected',
+                ),
+              ),
+            ),
+            if (!MapTilerMap.enabled)
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Configure MAPTILER_API_KEY in mobile/maptiler.env.json to select a pin.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
             TextField(
               controller: city,
               decoration: const InputDecoration(labelText: 'City'),
@@ -858,6 +888,21 @@ class _DonationFormState extends State<DonationForm> {
       ),
     ],
   );
+
+  Future<void> choosePickupLocation() async {
+    if (!MapTilerMap.enabled) {
+      snack(
+        context,
+        'Configure MAPTILER_API_KEY in mobile/maptiler.env.json to choose a pickup point.',
+      );
+      return;
+    }
+    final selected = await showDialog<ll.LatLng>(
+      context: context,
+      builder: (_) => MapLocationPicker(initialLocation: pickupLocation),
+    );
+    if (mounted && selected != null) setState(() => pickupLocation = selected);
+  }
 
   Future<void> pickPhotos() async {
     final remaining = 5 - photos.length;
@@ -892,6 +937,12 @@ class _DonationFormState extends State<DonationForm> {
 
   Future<void> save() async {
     if (busy) return;
+    if (createdDonationId == null &&
+        MapTilerMap.enabled &&
+        pickupLocation == null) {
+      snack(context, 'Choose the pickup point on the map before publishing.');
+      return;
+    }
     setState(() => busy = true);
     try {
       if (createdDonationId == null) {
@@ -905,6 +956,8 @@ class _DonationFormState extends State<DonationForm> {
             'quantity': int.tryParse(qty.text) ?? 1,
             'pickupAddress': address.text,
             'city': city.text,
+            if (pickupLocation != null) 'latitude': pickupLocation!.latitude,
+            if (pickupLocation != null) 'longitude': pickupLocation!.longitude,
           },
         );
         final id = (response.data as Map<String, dynamic>)['id'];
@@ -1165,13 +1218,318 @@ class _ChatPageState extends State<ChatPage> {
   );
 }
 
+class MapTilerMap {
+  static const apiKey = String.fromEnvironment('MAPTILER_API_KEY');
+  static bool get enabled => apiKey.isNotEmpty;
+
+  static fmap.TileLayer get tileLayer => fmap.TileLayer(
+    urlTemplate:
+        'https://api.maptiler.com/maps/streets-v4/256/{z}/{x}/{y}.png?key=$apiKey',
+    userAgentPackageName: 'edu.rdp.resource_distribution_app',
+    maxNativeZoom: 20,
+  );
+
+  static Widget get attribution => const fmap.RichAttributionWidget(
+    attributions: [
+      fmap.TextSourceAttribution('© MapTiler © OpenStreetMap contributors'),
+    ],
+  );
+}
+
+class MapLocationPicker extends StatefulWidget {
+  const MapLocationPicker({super.key, this.initialLocation});
+  final ll.LatLng? initialLocation;
+  @override
+  State<MapLocationPicker> createState() => _MapLocationPickerState();
+}
+
+class _MapLocationPickerState extends State<MapLocationPicker> {
+  static const fallback = ll.LatLng(24.8607, 67.0011);
+  static const _searchUserAgent =
+      'flutter_map (edu.rdp.resource_distribution_app)';
+  final searchController = TextEditingController();
+  final mapController = fmap.MapController();
+  final geocodingClient = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+      headers: const {'User-Agent': _searchUserAgent},
+    ),
+  );
+  List<Map<String, dynamic>> searchResults = [];
+  bool searching = false;
+  bool mapReady = false;
+  String? searchError;
+  late ll.LatLng selected = widget.initialLocation ?? fallback;
+  late bool hasSelection = widget.initialLocation != null;
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    geocodingClient.close();
+    mapController.dispose();
+    super.dispose();
+  }
+
+  Future<void> searchPlaces() async {
+    final query = searchController.text.trim();
+    if (query.length < 2) {
+      setState(() {
+        searchResults = [];
+        searchError = 'Enter at least 2 characters to search.';
+      });
+      return;
+    }
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      searching = true;
+      searchError = null;
+      searchResults = [];
+    });
+    try {
+      final uri = Uri(
+        scheme: 'https',
+        host: 'api.maptiler.com',
+        pathSegments: ['geocoding', '$query.json'],
+        queryParameters: {
+          'key': MapTilerMap.apiKey,
+          'limit': '5',
+          'autocomplete': 'true',
+          'language': 'en',
+          'proximity': '${selected.longitude},${selected.latitude}',
+        },
+      );
+      final response = await geocodingClient.getUri(uri);
+      final features = response.data is Map ? response.data['features'] : null;
+      final results = features is List
+          ? features.whereType<Map>().map(Map<String, dynamic>.from).toList()
+          : <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() {
+        searchResults = results;
+        if (results.isEmpty)
+          searchError = 'No places found. Try another search.';
+      });
+    } on DioException {
+      if (!mounted) return;
+      setState(() {
+        searchError =
+            'Location search failed. Check your connection and try again.';
+      });
+    } finally {
+      if (mounted) setState(() => searching = false);
+    }
+  }
+
+  void choosePlace(Map<String, dynamic> feature) {
+    final geometry = feature['geometry'];
+    final coordinates = geometry is Map ? geometry['coordinates'] : null;
+    if (coordinates is! List || coordinates.length < 2) return;
+    final longitude = coordinates[0];
+    final latitude = coordinates[1];
+    if (longitude is! num || latitude is! num) return;
+    final point = ll.LatLng(latitude.toDouble(), longitude.toDouble());
+    setState(() {
+      selected = point;
+      hasSelection = true;
+      searchResults = [];
+      searchError = null;
+      searchController.text =
+          feature['place_name']?.toString() ??
+          feature['text']?.toString() ??
+          '';
+    });
+    if (mapReady) mapController.move(point, 15);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Choose pickup point'),
+    content: SizedBox(
+      width: 520,
+      height: 470,
+      child: Column(
+        children: [
+          TextField(
+            controller: searchController,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => searchPlaces(),
+            decoration: InputDecoration(
+              hintText: 'Search for a city, area, or address',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: searching
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      tooltip: 'Search places',
+                      onPressed: searchPlaces,
+                      icon: const Icon(Icons.arrow_forward),
+                    ),
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          if (searchResults.isNotEmpty)
+            SizedBox(
+              height: searchResults.length > 1 ? 108 : 56,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                itemCount: searchResults.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final result = searchResults[index];
+                  final label =
+                      result['place_name']?.toString() ??
+                      result['text']?.toString() ??
+                      'Unknown place';
+                  return ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    leading: const Icon(Icons.location_on_outlined),
+                    title: Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () => choosePlace(result),
+                  );
+                },
+              ),
+            )
+          else if (searchError != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                searchError!,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          const Padding(
+            padding: EdgeInsets.only(top: 4, bottom: 6),
+            child: Text(
+              'Choose a result or tap a spot on the map. Search by MapTiler.',
+            ),
+          ),
+          Expanded(
+            child: fmap.FlutterMap(
+              mapController: mapController,
+              options: fmap.MapOptions(
+                initialCenter: selected,
+                initialZoom: 13,
+                onMapReady: () {
+                  mapReady = true;
+                },
+                onTap: (_, point) => setState(() {
+                  selected = point;
+                  hasSelection = true;
+                }),
+              ),
+              children: [
+                MapTilerMap.tileLayer,
+                fmap.MarkerLayer(
+                  markers: [
+                    fmap.Marker(
+                      point: selected,
+                      width: 44,
+                      height: 48,
+                      child: const Icon(
+                        Icons.location_pin,
+                        color: Color(0xff176b55),
+                        size: 44,
+                      ),
+                    ),
+                  ],
+                ),
+                MapTilerMap.attribution,
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${selected.latitude.toStringAsFixed(5)}, ${selected.longitude.toStringAsFixed(5)}',
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: hasSelection ? () => Navigator.pop(context, selected) : null,
+        child: const Text('Use this location'),
+      ),
+    ],
+  );
+}
+
+class DonationBrowseMap extends StatelessWidget {
+  const DonationBrowseMap({super.key, required this.items});
+  final List<Map<String, dynamic>> items;
+  @override
+  Widget build(BuildContext context) {
+    final points = items
+        .map(
+          (item) => ll.LatLng(
+            (item['latitude'] as num).toDouble(),
+            (item['longitude'] as num).toDouble(),
+          ),
+        )
+        .toList();
+    return fmap.FlutterMap(
+      options: fmap.MapOptions(
+        initialCenter: points.first,
+        initialZoom: 11,
+        initialCameraFit: points.length > 1
+            ? fmap.CameraFit.coordinates(
+                coordinates: points,
+                padding: const EdgeInsets.all(48),
+                maxZoom: 12,
+              )
+            : null,
+      ),
+      children: [
+        MapTilerMap.tileLayer,
+        fmap.MarkerLayer(
+          markers: List.generate(items.length, (index) {
+            final item = items[index];
+            return fmap.Marker(
+              point: points[index],
+              width: 42,
+              height: 48,
+              child: Tooltip(
+                message:
+                    '${item['title'] ?? 'Resource'} · ${item['city'] ?? ''}',
+                child: const Icon(
+                  Icons.location_pin,
+                  color: Color(0xff176b55),
+                  size: 42,
+                ),
+              ),
+            );
+          }),
+        ),
+        MapTilerMap.attribution,
+      ],
+    );
+  }
+}
+
 class DonationMap extends StatelessWidget {
   const DonationMap({super.key, required this.item});
   final Map<String, dynamic> item;
-  static const enabled = bool.fromEnvironment('GOOGLE_MAPS_ENABLED');
+  static bool get enabled => MapTilerMap.enabled;
   @override
   Widget build(BuildContext context) {
-    final point = LatLng(
+    final point = ll.LatLng(
       (item['latitude'] as num).toDouble(),
       (item['longitude'] as num).toDouble(),
     );
@@ -1181,26 +1539,30 @@ class DonationMap extends StatelessWidget {
         width: 500,
         height: 380,
         child: enabled
-            ? GoogleMap(
-                initialCameraPosition: CameraPosition(target: point, zoom: 14),
-                markers: {
-                  Marker(
-                    markerId: const MarkerId('pickup'),
-                    position: point,
-                    infoWindow: InfoWindow(title: item['title']?.toString()),
+            ? fmap.FlutterMap(
+                options: fmap.MapOptions(initialCenter: point, initialZoom: 14),
+                children: [
+                  MapTilerMap.tileLayer,
+                  fmap.MarkerLayer(
+                    markers: [
+                      fmap.Marker(
+                        point: point,
+                        width: 44,
+                        height: 48,
+                        child: const Icon(
+                          Icons.location_pin,
+                          color: Color(0xff176b55),
+                          size: 44,
+                        ),
+                      ),
+                    ],
                   ),
-                },
+                  MapTilerMap.attribution,
+                ],
               )
             : Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.map_outlined, size: 48),
-                    const Text('Add a Google Maps key to enable the map.'),
-                    Text(
-                      '${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}',
-                    ),
-                  ],
+                child: Text(
+                  '${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}',
                 ),
               ),
       ),

@@ -10,5 +10,9 @@ Push-Location (Join-Path $root 'mobile')
 try {
     flutter analyze; if ($LASTEXITCODE -ne 0) { throw 'Flutter analysis failed.' }
     flutter test; if ($LASTEXITCODE -ne 0) { throw 'Flutter tests failed.' }
-    flutter build apk --debug; if ($LASTEXITCODE -ne 0) { throw 'Android APK build failed.' }
+    $mapArgs = @()
+    if (Test-Path (Join-Path $root 'mobile\maptiler.env.json')) {
+        $mapArgs += '--dart-define-from-file=maptiler.env.json'
+    }
+    flutter build apk --debug @mapArgs; if ($LASTEXITCODE -ne 0) { throw 'Android APK build failed.' }
 } finally { Pop-Location }

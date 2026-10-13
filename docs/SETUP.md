@@ -21,9 +21,13 @@ For a physical phone on the same network:
 
 Build a debug APK with scripts\build-android.ps1. Output path: mobile\build\app\outputs\flutter-apk\app-debug.apk.
 
-## Optional Google Maps
+## MapTiler maps
 
-Add MAPS_API_KEY=your-key to mobile/android/local.properties. Then start or build the Flutter app with the dart define GOOGLE_MAPS_ENABLED=true. Restrict the key to Android package edu.rdp.resource_distribution_app and Maps SDK for Android. Never commit the key.
+The donor listing form uses the map to place a pickup pin. Search for a city, area, or address in the picker to move the pin, or tap the map to place it manually. Recipients can open an individual pickup map or switch Explore to a map of listings; Nearby lets them search for a place or choose a point on the map and a radius. The app saves listing coordinates in the backend and loads MapTiler raster tiles with flutter_map; place search uses the MapTiler Geocoding API with the same API key.
+
+The client-side MapTiler key is included in mobile/maptiler.env.json as MAPTILER_API_KEY, and the project launch and build scripts pass it to Flutter automatically. This key is public in the GitHub repository and in the compiled app. Restrict it in MapTiler to the app's User-Agent string, flutter_map (edu.rdp.resource_distribution_app), and monitor account usage. Map tiles must retain MapTiler and OpenStreetMap attribution.
+
+For a physical phone, run flutter from the mobile folder with --dart-define-from-file=maptiler.env.json and set API_BASE_URL for your computer’s LAN address.
 
 ## Optional Firebase push notifications
 
