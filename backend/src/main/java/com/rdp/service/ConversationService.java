@@ -15,12 +15,15 @@ public class ConversationService {
     private final ConversationRepository conversations;
     private final ChatMessageRepository messages;
     private final DonationRequestRepository requests;
+    private final DonationRepository donations;
     private final CurrentUserService current;
     private final ApiMapper mapper;
     private final NotificationService notifications;
     public ConversationService(ConversationRepository conversations, ChatMessageRepository messages,
-            DonationRequestRepository requests, CurrentUserService current, ApiMapper mapper, NotificationService notifications) {
+            DonationRequestRepository requests, DonationRepository donations, CurrentUserService current,
+            ApiMapper mapper, NotificationService notifications) {
         this.conversations = conversations; this.messages = messages; this.requests = requests;
+        this.donations = donations;
         this.current = current; this.mapper = mapper; this.notifications = notifications;
     }
     @Transactional
@@ -30,12 +33,44 @@ public class ConversationService {
         if (!isParticipant(request, actor)) throw ApiException.forbidden("Only the donor and recipient can open this conversation.");
         if (request.getStatus() != RequestStatus.ACCEPTED && request.getStatus() != RequestStatus.COMPLETED)
             throw ApiException.conflict("Chat becomes available after the donor accepts the request.");
-        Conversation conversation = conversations.findByRequestId(requestId).orElseGet(() -> {
-            Conversation created = new Conversation(); created.setRequest(request);
-            created.setDonor(request.getDonation().getDonor()); created.setRecipient(request.getRecipient());
-            return conversations.save(created);
-        });
+        Conversation conversation = conversations.findByDonorIdAndRecipientId(
+                        request.getDonation().getDonor().getId(), request.getRecipient().getId())
+                .or(() -> conversations.findByRequestId(requestId))
+                .orElseGet(() -> {
+                    Conversation created = new Conversation();
+                    created.setRequest(request);
+                    created.setDonation(request.getDonation());
+                    created.setDonor(request.getDonation().getDonor());
+                    created.setRecipient(request.getRecipient());
+                    return conversations.save(created);
+                });
+        conversation.setRequest(request);
+        conversation.setDonation(request.getDonation());
         return view(conversation, actor);
+    }
+
+    @Transactional
+    public ConversationView openForDonation(String email, Long donationId) {
+        AppUser recipient = current.require(email);
+        if (recipient.getRole() != Role.RECIPIENT)
+            throw ApiException.forbidden("Only recipient accounts can contact a donor before requesting.");
+        Donation donation = donations.findById(donationId)
+                .orElseThrow(() -> ApiException.notFound("Donation not found."));
+        if (donation.getDonor().getId().equals(recipient.getId()))
+            throw ApiException.badRequest("You cannot contact yourself about your own listing.");
+        if (donation.getStatus() != DonationStatus.AVAILABLE || donation.getAvailableQuantity() < 1)
+            throw ApiException.conflict("This listing is no longer available for new conversations.");
+        Conversation conversation = conversations.findByDonorIdAndRecipientId(donation.getDonor().getId(), recipient.getId())
+                .orElseGet(() -> {
+                    Conversation created = new Conversation();
+                    created.setDonation(donation);
+                    created.setDonor(donation.getDonor());
+                    created.setRecipient(recipient);
+                    return conversations.save(created);
+                });
+        conversation.setDonation(donation);
+        conversation.setRequest(null);
+        return view(conversation, recipient);
     }
     @Transactional(readOnly = true)
     public List<ConversationView> mine(String email) {
@@ -65,7 +100,7 @@ public class ConversationService {
         MessageView view = mapper.message(messages.saveAndFlush(message));
         AppUser recipient = actor.getId().equals(c.getDonor().getId()) ? c.getRecipient() : c.getDonor();
         notifications.create(recipient, NotificationType.NEW_MESSAGE, "New message",
-                actor.getName() + " sent you a message about " + c.getRequest().getDonation().getTitle() + ".", c.getId());
+                actor.getName() + " sent you a message about " + donation(c).getTitle() + ".", c.getId());
         return view;
     }
     @Transactional(readOnly = true)
@@ -82,9 +117,15 @@ public class ConversationService {
         if (!c.getDonor().getId().equals(user.getId()) && !c.getRecipient().getId().equals(user.getId()))
             throw ApiException.forbidden("This conversation is private to its donor and recipient.");
     }
+    private Donation donation(Conversation conversation) {
+        return conversation.getDonation() != null
+                ? conversation.getDonation()
+                : conversation.getRequest().getDonation();
+    }
     private ConversationView view(Conversation c, AppUser actor) {
         AppUser other = c.getDonor().getId().equals(actor.getId()) ? c.getRecipient() : c.getDonor();
-        return new ConversationView(c.getId(), c.getRequest().getId(), c.getRequest().getDonation().getId(),
-                c.getRequest().getDonation().getTitle(), other.getId(), other.getName(), c.getCreatedAt());
+        Donation donation = donation(c);
+        return new ConversationView(c.getId(), c.getRequest() == null ? null : c.getRequest().getId(),
+                donation.getId(), donation.getTitle(), other.getId(), other.getName(), c.getCreatedAt());
     }
 }

@@ -13,6 +13,12 @@ if (-not (Test-NetConnection -ComputerName localhost -Port 3306 -InformationLeve
 $sql = Join-Path $root 'backend\database\create_database.sql'
 Get-Content $sql | & 'C:\xampp\mysql\bin\mysql.exe' -h localhost -u $env:DB_USERNAME
 if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the local database.' }
+$chatMigration = Join-Path $root 'backend\database\migrations\20261020_pre_request_chat.sql'
+Get-Content $chatMigration | & 'C:\xampp\mysql\bin\mysql.exe' -h localhost -u $env:DB_USERNAME resource_distribution_db
+if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the database for pre-request messaging.' }
+$pairChatMigration = Join-Path $root 'backend\database\migrations\20261020_one_conversation_per_pair.sql'
+Get-Content $pairChatMigration | & 'C:\xampp\mysql\bin\mysql.exe' -h localhost -u $env:DB_USERNAME resource_distribution_db
+if ($LASTEXITCODE -ne 0) { throw 'Could not prepare shared donor-recipient conversations.' }
 Push-Location (Join-Path $root 'backend')
 try {
     $env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot'

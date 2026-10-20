@@ -25,6 +25,10 @@ public class ChatController {
     public ResponseEntity<ConversationView> open(Authentication auth, @PathVariable Long requestId) {
         return ResponseEntity.ok(conversations.open(auth.getName(), requestId));
     }
+    @PostMapping("/donations/{donationId}/conversation")
+    public ResponseEntity<ConversationView> contactDonor(Authentication auth, @PathVariable Long donationId) {
+        return ResponseEntity.ok(conversations.openForDonation(auth.getName(), donationId));
+    }
     @GetMapping("/conversations/{id}/messages")
     public List<MessageView> messages(Authentication auth, @PathVariable Long id) {
         return conversations.messages(auth.getName(), id);

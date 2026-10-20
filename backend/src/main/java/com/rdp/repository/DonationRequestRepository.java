@@ -7,6 +7,7 @@ import java.util.List;
 
 public interface DonationRequestRepository extends JpaRepository<DonationRequest, Long> {
     boolean existsByDonationIdAndRecipientId(Long donationId, Long recipientId);
+    boolean existsByDonationIdAndStatusAndIdNot(Long donationId, RequestStatus status, Long id);
     List<DonationRequest> findByRecipientIdOrderByCreatedAtDesc(Long recipientId);
     List<DonationRequest> findByDonationDonorIdOrderByCreatedAtDesc(Long donorId);
     List<DonationRequest> findByDonationIdOrderByCreatedAtDesc(Long donationId);

@@ -7,5 +7,7 @@ import java.util.Optional;
 
 public interface ConversationRepository extends JpaRepository<Conversation, Long> {
     Optional<Conversation> findByRequestId(Long requestId);
+    Optional<Conversation> findByDonationIdAndRecipientId(Long donationId, Long recipientId);
+    Optional<Conversation> findByDonorIdAndRecipientId(Long donorId, Long recipientId);
     List<Conversation> findByDonorIdOrRecipientIdOrderByCreatedAtDesc(Long donorId, Long recipientId);
 }

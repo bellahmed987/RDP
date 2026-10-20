@@ -19,6 +19,8 @@ public final class ApiDtos {
                            String address, String city, Double latitude, Double longitude,
                            Role role, AccountStatus status, List<DonationCategory> preferredCategories,
                            Instant createdAt) {}
+    public record DonorProfileView(Long id, String name, String profileImageUrl, String city,
+                                   Instant joinedAt, long listingsPosted, long pickupsCompleted) {}
     public record AuthResponse(String token, String tokenType, UserView user) {}
     public record ProfileUpdate(@Size(max = 120) String name, @Size(max = 32) String phone,
                                 @Size(max = 300) String address, @Size(max = 100) String city,

@@ -69,7 +69,8 @@ public class RequestService {
             if (donation.getStatus() != DonationStatus.AVAILABLE || donation.getAvailableQuantity() < request.getQuantity())
                 throw ApiException.conflict("There is no longer enough available quantity.");
             donation.setAvailableQuantity(donation.getAvailableQuantity() - request.getQuantity());
-            if (donation.getAvailableQuantity() == 0) donation.setStatus(DonationStatus.RESERVED);
+            // An accepted pickup reserves the whole listing until pickup is completed.
+            donation.setStatus(DonationStatus.RESERVED);
             notifications.create(request.getRecipient(), NotificationType.REQUEST_ACCEPTED,
                     "Request accepted", "The donor accepted your request for " + donation.getTitle() + ".", request.getId());
         } else {
@@ -97,6 +98,8 @@ public class RequestService {
         if (request.getStatus() != RequestStatus.ACCEPTED) throw ApiException.conflict("Only an accepted pickup can be completed.");
         request.setStatus(RequestStatus.COMPLETED);
         if (donation.getAvailableQuantity() == 0) donation.setStatus(DonationStatus.PICKED_UP);
+        else if (requests.existsByDonationIdAndStatusAndIdNot(donation.getId(), RequestStatus.ACCEPTED, request.getId()))
+            donation.setStatus(DonationStatus.RESERVED);
         else donation.setStatus(DonationStatus.AVAILABLE);
         notifications.create(request.getRecipient(), NotificationType.DONATION_UPDATE,
                 "Pickup completed", "The donor marked " + donation.getTitle() + " as picked up.", request.getId());

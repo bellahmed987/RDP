@@ -20,6 +20,8 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
     Page<Donation> discover(@Param("category") DonationCategory category, @Param("city") String city,
                             @Param("q") String query, Pageable pageable);
     List<Donation> findByDonorIdOrderByCreatedAtDesc(Long donorId);
+    long countByDonorId(Long donorId);
+    long countByDonorIdAndStatus(Long donorId, DonationStatus status);
     long countByStatus(DonationStatus status);
     long countByCategory(DonationCategory category);
     long countByCityIgnoreCase(String city);

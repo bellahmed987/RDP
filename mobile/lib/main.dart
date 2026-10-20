@@ -20,8 +20,79 @@ class RdpApp extends StatelessWidget {
     title: 'ShareKind',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff176b55)),
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xff176b55),
+        brightness: Brightness.dark,
+        primary: const Color(0xff82d6b4),
+        secondary: const Color(0xffe8b56d),
+        surface: const Color(0xff1b2622),
+      ),
       useMaterial3: true,
+      scaffoldBackgroundColor: const Color(0xff101714),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xff101714),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleTextStyle: TextStyle(
+          color: Color(0xffedf5f0),
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: const Color(0xff1b2622),
+        surfaceTintColor: Colors.transparent,
+        elevation: 1,
+        shadowColor: Colors.black.withValues(alpha: .22),
+        margin: const EdgeInsets.only(bottom: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xff1b2622),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Color(0xff34443d)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Color(0xff82d6b4), width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 15,
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xff151f1b),
+        indicatorColor: const Color(0xff294b3e),
+        elevation: 8,
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => TextStyle(
+            fontSize: 11,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+          ),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: const Color(0xff1b2622),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      ),
     ),
     home: const Gate(),
   );
@@ -125,15 +196,28 @@ class _AuthScreenState extends State<AuthScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(
-                  Icons.volunteer_activism,
-                  size: 64,
-                  color: Color(0xff176b55),
+                Container(
+                  width: 76,
+                  height: 76,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xff203b31),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: const Icon(
+                    Icons.volunteer_activism,
+                    size: 40,
+                    color: Color(0xff82d6b4),
+                  ),
                 ),
+                const SizedBox(height: 14),
                 Text(
                   'ShareKind',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineLarge,
+                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
                 const Text(
                   'Good things find good people.',
@@ -223,8 +307,15 @@ class _HomeState extends State<Home> {
     final labels = admin
         ? ['Overview', 'Users', 'Donations', 'Reports']
         : donor
-        ? ['Donations', 'Requests', 'Profile']
-        : ['Explore', 'Requests', 'Favorites', 'For you', 'Profile'];
+        ? ['Donations', 'Requests', 'Messages', 'Profile']
+        : [
+            'Explore',
+            'Requests',
+            'Favorites',
+            'For you',
+            'Messages',
+            'Profile',
+          ];
     final pages = admin
         ? [
             const AdminPage(),
@@ -236,6 +327,7 @@ class _HomeState extends State<Home> {
         ? [
             DonationList(mine: true, key: myDonationsKey),
             const RequestList(incoming: true),
+            const ConversationsPage(),
             ProfilePage(user: widget.user),
           ]
         : [
@@ -243,22 +335,68 @@ class _HomeState extends State<Home> {
             const RequestList(incoming: false),
             const FavoritesPage(),
             const RecsPage(),
+            const ConversationsPage(),
             ProfilePage(user: widget.user),
           ];
     final icons = admin
         ? [Icons.dashboard, Icons.people, Icons.inventory_2, Icons.flag]
         : donor
-        ? [Icons.inventory_2, Icons.inbox, Icons.person]
+        ? [
+            Icons.inventory_2,
+            Icons.inbox,
+            Icons.chat_bubble_outline,
+            Icons.person,
+          ]
         : [
             Icons.explore,
             Icons.inbox,
             Icons.favorite,
             Icons.auto_awesome,
+            Icons.chat_bubble_outline,
             Icons.person,
           ];
     return Scaffold(
       appBar: AppBar(
-        title: Text('ShareKind · ${labels[index]}'),
+        title: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: const Color(0xff203b31),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: const Icon(
+                Icons.volunteer_activism,
+                size: 19,
+                color: Color(0xff82d6b4),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ShareKind',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                Text(
+                  labels[index],
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Notifications',
@@ -370,11 +508,12 @@ class _DonationListState extends State<DonationList> {
       );
       return;
     }
-    selected = await showDialog<ll.LatLng>(
+    final location = await showDialog<PickedLocation>(
       context: context,
       builder: (_) => MapLocationPicker(initialLocation: selected),
     );
-    if (!mounted || selected == null) return;
+    if (!mounted || location == null) return;
+    selected = location.point;
     final radius = TextEditingController(text: nearbyRadius.toString());
     final ok = await showDialog<bool>(
       context: context,
@@ -491,9 +630,14 @@ class _DonationListState extends State<DonationList> {
             }
             if (s.hasError) return ErrorPane(onRetry: refresh);
             final data = s.data;
-            final List items = data is List
-                ? data
-                : (data is Map ? data['items'] ?? [] : []);
+            final List items =
+                (data is List ? data : (data is Map ? data['items'] ?? [] : []))
+                    .where(
+                      (x) =>
+                          !widget.mine ||
+                          (x is Map && x['status'] != 'CANCELLED'),
+                    )
+                    .toList();
             if (items.isEmpty) {
               return EmptyPane(
                 title: widget.mine ? 'No donations yet' : 'No resources found',
@@ -529,11 +673,45 @@ class _DonationListState extends State<DonationList> {
               onRefresh: () async => refresh(),
               child: ListView(
                 padding: const EdgeInsets.all(12),
-                children: items
-                    .map(
-                      (x) => DonationCard(item: Map<String, dynamic>.from(x)),
-                    )
-                    .toList(),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 2, 4, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.mine
+                              ? 'Your listings'
+                              : 'Find something useful',
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.mine
+                              ? 'Manage what you have shared with your community.'
+                              : 'Good things are being shared near you.',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...items.map(
+                    (x) => DonationCard(
+                      item: Map<String, dynamic>.from(x),
+                      isOwner: widget.mine,
+                      onChanged: refresh,
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -543,9 +721,51 @@ class _DonationListState extends State<DonationList> {
   );
 }
 
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status});
+  final String status;
+  @override
+  Widget build(BuildContext context) {
+    final available = status == 'AVAILABLE';
+    final reserved = status == 'RESERVED';
+    final background = available
+        ? const Color(0xff203b31)
+        : reserved
+        ? const Color(0xff48351f)
+        : const Color(0xff303936);
+    final foreground = available
+        ? const Color(0xff82d6b4)
+        : reserved
+        ? const Color(0xfff0c47d)
+        : const Color(0xffc0cbc4);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Text(
+        pretty(status),
+        style: TextStyle(
+          color: foreground,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class DonationCard extends StatefulWidget {
-  const DonationCard({super.key, required this.item});
+  const DonationCard({
+    super.key,
+    required this.item,
+    this.isOwner = false,
+    this.onChanged,
+  });
   final Map<String, dynamic> item;
+  final bool isOwner;
+  final VoidCallback? onChanged;
   @override
   State<DonationCard> createState() => _DonationCardState();
 }
@@ -593,7 +813,10 @@ class _DonationCardState extends State<DonationCard> {
         children: [
           Row(
             children: [
-              const Icon(Icons.volunteer_activism, color: Color(0xff176b55)),
+              Icon(
+                Icons.volunteer_activism,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -601,7 +824,7 @@ class _DonationCardState extends State<DonationCard> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
-              Text(pretty(item['status'] ?? 'AVAILABLE')),
+              _StatusPill(status: item['status']?.toString() ?? 'AVAILABLE'),
               if (Api.instance.role == 'RECIPIENT')
                 IconButton(
                   tooltip: favorite ? 'Remove saved item' : 'Save item',
@@ -615,11 +838,17 @@ class _DonationCardState extends State<DonationCard> {
           ),
           ..._donationPhotoStrip(item),
           Text(
-            '${pretty(item['category'] ?? '')} · ${item['quantity'] ?? 1} available',
+            '${pretty(item['category'] ?? '')} · ${item['availableQuantity'] ?? item['quantity'] ?? 1} ${item['status'] == 'AVAILABLE' ? 'available' : 'remaining'}',
           ),
-          Text(
-            '${item['city'] ?? item['donorCity'] ?? 'Location not set'} · ${item['donorName'] ?? ''}',
+          Text('${item['city'] ?? item['donorCity'] ?? 'Location not set'}'),
+          TextButton.icon(
+            onPressed: () => viewDonor(context),
+            icon: const Icon(Icons.person_outline),
+            label: Text('View ${item['donorName'] ?? 'donor'} profile'),
           ),
+          if (widget.isOwner &&
+              (item['pickupAddress']?.toString().isNotEmpty ?? false))
+            Text('Pickup address: ${item['pickupAddress']}'),
           Text(
             item['description'] ?? '',
             maxLines: 3,
@@ -637,18 +866,155 @@ class _DonationCardState extends State<DonationCard> {
                 label: const Text('Pickup map'),
               ),
             ),
-          if (item['status'] == 'AVAILABLE')
+          if (widget.isOwner)
             Align(
               alignment: Alignment.centerRight,
-              child: FilledButton.tonal(
-                onPressed: () => request(context),
-                child: const Text('Request item'),
+              child: Wrap(
+                spacing: 4,
+                children: [
+                  if (item['status'] == 'AVAILABLE')
+                    TextButton.icon(
+                      onPressed: () => edit(context),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Edit'),
+                    ),
+                  if (item['status'] != 'PICKED_UP' &&
+                      item['status'] != 'CANCELLED')
+                    TextButton.icon(
+                      onPressed: () => delete(context),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Delete'),
+                    ),
+                ],
+              ),
+            ),
+          if (!widget.isOwner && item['status'] == 'RESERVED')
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lock_clock_outlined,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    'Pickup is being arranged',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.secondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (!widget.isOwner &&
+              Api.instance.role == 'RECIPIENT' &&
+              item['status'] == 'AVAILABLE')
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => contactDonor(context),
+                    icon: const Icon(Icons.chat_bubble_outline),
+                    label: const Text('Message donor'),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: () => request(context),
+                    child: const Text('Request item'),
+                  ),
+                ],
               ),
             ),
         ],
       ),
     ),
   );
+
+  Future<void> edit(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => DonationForm(donation: item, onSaved: widget.onChanged),
+    );
+  }
+
+  Future<void> viewDonor(BuildContext context) async {
+    final donorId = item['donorId'];
+    if (donorId is! int) {
+      snack(context, 'Donor profile is unavailable.');
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => DonorProfilePage(donorId: donorId)),
+    );
+  }
+
+  Future<void> contactDonor(BuildContext context) async {
+    try {
+      final response = await Api.instance.dio.post(
+        '/donations/${item['id']}/conversation',
+      );
+      if (context.mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatPage(
+              conversation: Map<String, dynamic>.from(response.data),
+            ),
+          ),
+        );
+      }
+    } on DioException catch (e) {
+      if (context.mounted) {
+        snack(
+          context,
+          e.response?.data?['message']?.toString() ??
+              'Could not start a conversation with the donor.',
+        );
+      }
+    }
+  }
+
+  Future<void> delete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Delete this listing?'),
+        content: const Text(
+          'The listing will be removed from available resources. Any pending requests will be declined.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Keep listing'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Delete listing'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await Api.instance.dio.delete('/donations/${item['id']}');
+      widget.onChanged?.call();
+      if (context.mounted) snack(context, 'Listing deleted.');
+    } on DioException catch (e) {
+      if (context.mounted) {
+        snack(
+          context,
+          e.response?.data?['message']?.toString() ??
+              'This listing could not be deleted.',
+        );
+      }
+    }
+  }
+
   Future<void> request(BuildContext context) async {
     final qty = TextEditingController(text: '1'), msg = TextEditingController();
     final ok = await showDialog<bool>(
@@ -734,8 +1100,9 @@ List<Widget> _donationPhotoStrip(Map<String, dynamic> item) {
 }
 
 class DonationForm extends StatefulWidget {
-  const DonationForm({super.key, this.onSaved});
+  const DonationForm({super.key, this.onSaved, this.donation});
   final VoidCallback? onSaved;
+  final Map<String, dynamic>? donation;
   @override
   State<DonationForm> createState() => _DonationFormState();
 }
@@ -753,10 +1120,35 @@ class _DonationFormState extends State<DonationForm> {
   String cat = 'FOOD', condition = 'GOOD';
   bool busy = false;
   int? createdDonationId;
+  bool get isEditing => widget.donation != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final donation = widget.donation;
+    if (donation == null) return;
+    title.text = donation['title']?.toString() ?? '';
+    description.text = donation['description']?.toString() ?? '';
+    qty.text = (donation['quantity'] ?? 1).toString();
+    address.text = donation['pickupAddress']?.toString() ?? '';
+    city.text = donation['city']?.toString() ?? '';
+    cat = donation['category']?.toString() ?? cat;
+    condition = donation['condition']?.toString() ?? condition;
+    final lat = donation['latitude'];
+    final lon = donation['longitude'];
+    if (lat is num && lon is num) {
+      pickupLocation = ll.LatLng(lat.toDouble(), lon.toDouble());
+    }
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(
-      createdDonationId == null ? 'Share a resource' : 'Finish photo upload',
+      createdDonationId != null
+          ? 'Finish photo upload'
+          : isEditing
+          ? 'Edit listing'
+          : 'Share a resource',
     ),
     content: SizedBox(
       width: 420,
@@ -785,9 +1177,19 @@ class _DonationFormState extends State<DonationForm> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: Text('Product photos (${photos.length}/5)')),
+                Expanded(
+                  child: Text(
+                    'Product photos (${(widget.donation?['imageUrls'] as List? ?? []).length + photos.length}/5)',
+                  ),
+                ),
                 TextButton.icon(
-                  onPressed: busy || createdDonationId != null
+                  onPressed:
+                      busy ||
+                          createdDonationId != null ||
+                          photos.length +
+                                  (widget.donation?['imageUrls'] as List? ?? [])
+                                      .length >=
+                              5
                       ? null
                       : pickPhotos,
                   icon: const Icon(Icons.add_photo_alternate_outlined),
@@ -882,8 +1284,12 @@ class _DonationFormState extends State<DonationForm> {
         onPressed: busy ? null : save,
         child: Text(
           busy
-              ? (createdDonationId == null ? 'Publishing…' : 'Uploading…')
-              : (createdDonationId == null ? 'Publish' : 'Retry photo upload'),
+              ? (createdDonationId == null
+                    ? (isEditing ? 'Saving…' : 'Publishing…')
+                    : 'Uploading…')
+              : (createdDonationId == null
+                    ? (isEditing ? 'Save changes' : 'Publish')
+                    : 'Retry photo upload'),
         ),
       ),
     ],
@@ -897,15 +1303,28 @@ class _DonationFormState extends State<DonationForm> {
       );
       return;
     }
-    final selected = await showDialog<ll.LatLng>(
+    final selected = await showDialog<PickedLocation>(
       context: context,
-      builder: (_) => MapLocationPicker(initialLocation: pickupLocation),
+      builder: (_) => MapLocationPicker(
+        initialLocation: pickupLocation,
+        requireAddress: true,
+      ),
     );
-    if (mounted && selected != null) setState(() => pickupLocation = selected);
+    if (mounted && selected != null) {
+      setState(() {
+        pickupLocation = selected.point;
+        if (selected.address?.isNotEmpty == true) {
+          address.text = selected.address!;
+        }
+      });
+    }
   }
 
   Future<void> pickPhotos() async {
-    final remaining = 5 - photos.length;
+    final remaining =
+        5 -
+        photos.length -
+        (widget.donation?['imageUrls'] as List? ?? []).length;
     if (remaining <= 0) {
       snack(context, 'A donation can have up to 5 photos.');
       return;
@@ -943,24 +1362,32 @@ class _DonationFormState extends State<DonationForm> {
       snack(context, 'Choose the pickup point on the map before publishing.');
       return;
     }
+    if (createdDonationId == null && address.text.trim().isEmpty) {
+      snack(context, 'Choose a map location or enter the pickup address.');
+      return;
+    }
     setState(() => busy = true);
     try {
       if (createdDonationId == null) {
-        final response = await Api.instance.dio.post(
-          '/donations',
-          data: {
-            'title': title.text,
-            'category': cat,
-            'description': description.text,
-            'condition': condition,
-            'quantity': int.tryParse(qty.text) ?? 1,
-            'pickupAddress': address.text,
-            'city': city.text,
-            if (pickupLocation != null) 'latitude': pickupLocation!.latitude,
-            if (pickupLocation != null) 'longitude': pickupLocation!.longitude,
-          },
+        final payload = {
+          'title': title.text.trim(),
+          'category': cat,
+          'description': description.text.trim(),
+          'condition': condition,
+          'quantity': int.tryParse(qty.text) ?? 1,
+          'pickupAddress': address.text.trim(),
+          'city': city.text.trim(),
+          if (pickupLocation != null) 'latitude': pickupLocation!.latitude,
+          if (pickupLocation != null) 'longitude': pickupLocation!.longitude,
+        };
+        final response = await Api.instance.dio.request(
+          isEditing ? '/donations/${widget.donation!['id']}' : '/donations',
+          options: Options(method: isEditing ? 'PUT' : 'POST'),
+          data: payload,
         );
-        final id = (response.data as Map<String, dynamic>)['id'];
+        final id = isEditing
+            ? widget.donation!['id']
+            : (response.data as Map<String, dynamic>)['id'];
         if (id is! int) throw StateError('The donation was not returned.');
         if (mounted) setState(() => createdDonationId = id);
       }
@@ -975,8 +1402,10 @@ class _DonationFormState extends State<DonationForm> {
           context,
           e.response?.data?['message']?.toString() ??
               (createdDonationId == null
-                  ? 'Check required fields.'
-                  : 'Donation posted, but a photo could not be uploaded. Tap Retry photo upload.'),
+                  ? (isEditing
+                        ? 'Could not update this listing. Check required fields.'
+                        : 'Check required fields.')
+                  : 'Listing saved, but a photo could not be uploaded. Tap Retry photo upload.'),
         );
       }
     } on StateError catch (e) {
@@ -1146,11 +1575,22 @@ class _ChatPageState extends State<ChatPage> {
     appBar: AppBar(
       title: Text(widget.conversation['otherUserName']?.toString() ?? 'Chat'),
       bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(24),
+        preferredSize: const Size.fromHeight(42),
         child: Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Text(
-            connected ? 'Live chat connected' : 'Connecting to live chat…',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.conversation['donationTitle']?.toString() ?? 'Listing',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+              Text(
+                connected ? 'Live chat connected' : 'Connecting to live chat…',
+              ),
+            ],
           ),
         ),
       ),
@@ -1218,6 +1658,12 @@ class _ChatPageState extends State<ChatPage> {
   );
 }
 
+class PickedLocation {
+  const PickedLocation({required this.point, this.address});
+  final ll.LatLng point;
+  final String? address;
+}
+
 class MapTilerMap {
   static const apiKey = String.fromEnvironment('MAPTILER_API_KEY');
   static bool get enabled => apiKey.isNotEmpty;
@@ -1237,8 +1683,13 @@ class MapTilerMap {
 }
 
 class MapLocationPicker extends StatefulWidget {
-  const MapLocationPicker({super.key, this.initialLocation});
+  const MapLocationPicker({
+    super.key,
+    this.initialLocation,
+    this.requireAddress = false,
+  });
   final ll.LatLng? initialLocation;
+  final bool requireAddress;
   @override
   State<MapLocationPicker> createState() => _MapLocationPickerState();
 }
@@ -1260,6 +1711,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   bool searching = false;
   bool mapReady = false;
   String? searchError;
+  String? selectedAddress;
+  bool resolvingAddress = false;
   late ll.LatLng selected = widget.initialLocation ?? fallback;
   late bool hasSelection = widget.initialLocation != null;
 
@@ -1308,8 +1761,9 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (!mounted) return;
       setState(() {
         searchResults = results;
-        if (results.isEmpty)
+        if (results.isEmpty) {
           searchError = 'No places found. Try another search.';
+        }
       });
     } on DioException {
       if (!mounted) return;
@@ -1335,12 +1789,64 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       hasSelection = true;
       searchResults = [];
       searchError = null;
-      searchController.text =
-          feature['place_name']?.toString() ??
-          feature['text']?.toString() ??
-          '';
+      selectedAddress =
+          feature['place_name']?.toString() ?? feature['text']?.toString();
+      searchController.text = selectedAddress ?? '';
     });
     if (mapReady) mapController.move(point, 15);
+  }
+
+  Future<String?> reverseGeocode(ll.LatLng point) async {
+    final uri = Uri(
+      scheme: 'https',
+      host: 'api.maptiler.com',
+      pathSegments: ['geocoding', '${point.longitude},${point.latitude}.json'],
+      queryParameters: {
+        'key': MapTilerMap.apiKey,
+        'limit': '1',
+        'language': 'en',
+      },
+    );
+    final response = await geocodingClient.getUri(uri);
+    final features = response.data is Map ? response.data['features'] : null;
+    if (features is! List || features.isEmpty || features.first is! Map) {
+      return null;
+    }
+    final feature = Map<String, dynamic>.from(features.first as Map);
+    final name = feature['place_name']?.toString().trim();
+    if (name != null && name.isNotEmpty) return name;
+    final text = feature['text']?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  Future<void> useSelectedLocation() async {
+    if (resolvingAddress) return;
+    var address = selectedAddress;
+    if (address == null || address.isEmpty) {
+      if (!widget.requireAddress) {
+        Navigator.pop(context, PickedLocation(point: selected));
+        return;
+      }
+      setState(() {
+        resolvingAddress = true;
+        searchError = null;
+      });
+      try {
+        address = await reverseGeocode(selected);
+      } on DioException {
+        address = null;
+      } finally {
+        if (mounted) setState(() => resolvingAddress = false);
+      }
+    }
+    if (!mounted) return;
+    if (address == null || address.isEmpty) {
+      setState(() {
+        searchError = 'Could not find an address for this point. Search for a place or tap a nearby street.';
+      });
+      return;
+    }
+    Navigator.pop(context, PickedLocation(point: selected, address: address));
   }
 
   @override
@@ -1428,6 +1934,9 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                 },
                 onTap: (_, point) => setState(() {
                   selected = point;
+                  selectedAddress = null;
+                  searchController.clear();
+                  searchError = null;
                   hasSelection = true;
                 }),
               ),
@@ -1464,8 +1973,12 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         child: const Text('Cancel'),
       ),
       FilledButton(
-        onPressed: hasSelection ? () => Navigator.pop(context, selected) : null,
-        child: const Text('Use this location'),
+        onPressed: hasSelection && !resolvingAddress
+            ? useSelectedLocation
+            : null,
+        child: Text(
+          resolvingAddress ? 'Finding address…' : 'Use this location',
+        ),
       ),
     ],
   );
@@ -1768,6 +2281,174 @@ class _RequestListState extends State<RequestList> {
   }
 }
 
+class ConversationsPage extends StatefulWidget {
+  const ConversationsPage({super.key});
+  @override
+  State<ConversationsPage> createState() => _ConversationsPageState();
+}
+
+class _ConversationsPageState extends State<ConversationsPage> {
+  late Future<dynamic> future;
+
+  @override
+  void initState() {
+    super.initState();
+    future = load();
+  }
+
+  Future<dynamic> load() async =>
+      (await Api.instance.dio.get('/conversations')).data;
+
+  void refresh() => setState(() => future = load());
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<dynamic>(
+    future: future,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) return ErrorPane(onRetry: refresh);
+      if (!snapshot.hasData) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      final conversations = snapshot.data as List;
+      if (conversations.isEmpty) {
+        return const EmptyPane(
+          title: 'No messages yet',
+          subtitle: 'Message a donor from a listing to start a conversation.',
+        );
+      }
+      return RefreshIndicator(
+        onRefresh: () async => refresh(),
+        child: ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: conversations.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 6),
+          itemBuilder: (context, index) {
+            final conversation = Map<String, dynamic>.from(
+              conversations[index],
+            );
+            return Card(
+              child: ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.chat_bubble_outline),
+                ),
+                title: Text(
+                  conversation['otherUserName']?.toString() ?? 'Conversation',
+                ),
+                subtitle: Text(
+                  conversation['donationTitle']?.toString() ?? 'Listing',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChatPage(conversation: conversation),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
+}
+
+class DonorProfilePage extends StatefulWidget {
+  const DonorProfilePage({super.key, required this.donorId});
+  final int donorId;
+  @override
+  State<DonorProfilePage> createState() => _DonorProfilePageState();
+}
+
+class _DonorProfilePageState extends State<DonorProfilePage> {
+  late Future<dynamic> future;
+
+  @override
+  void initState() {
+    super.initState();
+    future = Api.instance.dio
+        .get('/donors/${widget.donorId}/profile')
+        .then((response) => response.data);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Donor profile')),
+    body: FutureBuilder<dynamic>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return ErrorPane(
+            onRetry: () => setState(() {
+              future = Api.instance.dio
+                  .get('/donors/${widget.donorId}/profile')
+                  .then((response) => response.data);
+            }),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final donor = Map<String, dynamic>.from(snapshot.data);
+        final name = donor['name']?.toString() ?? 'Donor';
+        final imagePath = donor['profileImageUrl']?.toString();
+        final imageUrl = imagePath == null || imagePath.isEmpty
+            ? null
+            : Uri.parse(Api.instance.dio.options.baseUrl)
+                  .resolve(imagePath)
+                  .toString();
+        return ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            CircleAvatar(
+              radius: 48,
+              backgroundImage: imageUrl == null ? null : NetworkImage(imageUrl),
+              child: imageUrl == null
+                  ? Text(name.characters.first.toUpperCase())
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            Text(
+              donor['city']?.toString().isNotEmpty == true
+                  ? donor['city'].toString()
+                  : 'City not provided',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.volunteer_activism_outlined),
+                title: const Text('Listings shared'),
+                trailing: Text('${donor['listingsPosted'] ?? 0}'),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.done_all),
+                title: const Text('Pickups completed'),
+                trailing: Text('${donor['pickupsCompleted'] ?? 0}'),
+              ),
+            ),
+            if (donor['joinedAt'] != null)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.calendar_month_outlined),
+                  title: const Text('Member since'),
+                  trailing: Text(donor['joinedAt'].toString().split('T').first),
+                ),
+              ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
 class FavoritesPage extends StatefulWidget {
   const FavoritesPage({super.key});
   @override
@@ -1871,10 +2552,12 @@ class AdminPage extends StatefulWidget {
 
 class _AdminPageState extends State<AdminPage> {
   late Future<dynamic> future;
+  Future<dynamic> load() async =>
+      (await Api.instance.dio.get('/admin/stats')).data;
   @override
   void initState() {
     super.initState();
-    future = Api.instance.dio.get('/admin/stats').then((r) => r.data);
+    future = load();
   }
 
   @override
@@ -1882,49 +2565,238 @@ class _AdminPageState extends State<AdminPage> {
     future: future,
     builder: (c, s) {
       if (s.hasError) {
-        return ErrorPane(
-          onRetry: () => setState(
-            () => future = Api.instance.dio
-                .get('/admin/stats')
-                .then((r) => r.data),
-          ),
-        );
+        return ErrorPane(onRetry: () => setState(() => future = load()));
       }
       if (!s.hasData) return const Center(child: CircularProgressIndicator());
-      final x = s.data as Map;
-      final keys = [
-        'totalUsers',
-        'donors',
-        'recipients',
-        'totalDonations',
-        'availableDonations',
-        'completedDonations',
-        'pendingRequests',
-        'openReports',
+      final stats = Map<String, dynamic>.from(s.data as Map);
+      final metrics = <(String, String, IconData)>[
+        ('totalUsers', 'Community members', Icons.groups_2_outlined),
+        ('donors', 'Donors', Icons.volunteer_activism_outlined),
+        ('recipients', 'Recipients', Icons.people_alt_outlined),
+        ('activeUsers', 'Active accounts', Icons.verified_user_outlined),
+        ('totalDonations', 'All listings', Icons.inventory_2_outlined),
+        ('availableDonations', 'Available now', Icons.storefront_outlined),
+        ('completedDonations', 'Completed pickups', Icons.task_alt_outlined),
+        (
+          'pendingRequests',
+          'Pending requests',
+          Icons.mark_email_unread_outlined,
+        ),
+        ('openReports', 'Open reports', Icons.flag_outlined),
       ];
-      return GridView.count(
-        crossAxisCount: 2,
-        padding: const EdgeInsets.all(12),
-        children: keys
-            .map(
-              (k) => Card(
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${x[k]}',
-                        style: Theme.of(context).textTheme.headlineMedium,
-                      ),
-                      Text(pretty(k)),
-                    ],
-                  ),
+      final categories =
+          (stats['donationsByCategory'] as List? ?? const [])
+              .map((raw) => Map<String, dynamic>.from(raw as Map))
+              .toList()
+            ..sort((a, b) => (b['count'] as num).compareTo(a['count'] as num));
+      final largest = categories.fold<int>(1, (current, category) {
+        final count = (category['count'] as num?)?.toInt() ?? 0;
+        return count > current ? count : current;
+      });
+      return RefreshIndicator(
+        onRefresh: () async => setState(() => future = load()),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xff21483a), Color(0xff192823)],
                 ),
               ),
-            )
-            .toList(),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'ADMIN CONSOLE',
+                          style: TextStyle(
+                            color: Color(0xffa7d8bf),
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.4,
+                            fontSize: 11,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Community overview',
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'Monitor activity and keep listings moving.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: .78),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton.filledTonal(
+                    tooltip: 'Refresh dashboard',
+                    onPressed: () => setState(() => future = load()),
+                    icon: const Icon(Icons.refresh_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 22),
+            const _AdminSectionHeading(
+              title: 'At a glance',
+              subtitle: 'Live totals from the platform',
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) => GridView.count(
+                crossAxisCount: constraints.maxWidth > 700 ? 3 : 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: constraints.maxWidth > 700 ? 1.8 : 1.42,
+                children: metrics
+                    .map(
+                      (metric) => _AdminMetricCard(
+                        value: stats[metric.$1] ?? 0,
+                        label: metric.$2,
+                        icon: metric.$3,
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const _AdminSectionHeading(
+              title: 'Listings by category',
+              subtitle: 'Where community donations are coming from',
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: categories.isEmpty
+                    ? const Text(
+                        'Category activity will appear here as listings are added.',
+                      )
+                    : Column(
+                        children: categories.map((category) {
+                          final count =
+                              (category['count'] as num?)?.toInt() ?? 0;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        pretty(
+                                          category['category']?.toString() ??
+                                              'Other',
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '$count',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(5),
+                                  child: LinearProgressIndicator(
+                                    value: count / largest,
+                                    minHeight: 7,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+              ),
+            ),
+          ],
+        ),
       );
     },
+  );
+}
+
+class _AdminSectionHeading extends StatelessWidget {
+  const _AdminSectionHeading({required this.title, required this.subtitle});
+  final String title, subtitle;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: Theme.of(context).textTheme.titleLarge
+            ?.copyWith(fontWeight: FontWeight.w800),
+      ),
+      const SizedBox(height: 3),
+      Text(
+        subtitle,
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ],
+  );
+}
+
+class _AdminMetricCard extends StatelessWidget {
+  const _AdminMetricCard({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
+  final dynamic value;
+  final String label;
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Icon(icon, color: Theme.of(context).colorScheme.primary),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$value',
+                style: Theme.of(context).textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
   );
 }
 
@@ -1936,14 +2808,71 @@ class UsersPage extends StatefulWidget {
 
 class _UsersPageState extends State<UsersPage> {
   late Future<dynamic> future;
+  final search = TextEditingController();
+  String statusFilter = 'ALL';
   @override
   void initState() {
     super.initState();
     future = load();
   }
 
-  Future<dynamic> load() async =>
-      (await Api.instance.dio.get('/admin/users')).data['items'];
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  Future<dynamic> load() async => (await Api.instance.dio.get(
+    '/admin/users',
+    queryParameters: {
+      if (search.text.trim().isNotEmpty) 'q': search.text.trim(),
+      'size': 100,
+    },
+  )).data;
+
+  Future<void> changeStatus(Map<String, dynamic> user, String status) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('${pretty(status)} account?'),
+        content: Text(
+          'Change ${user['name']} to ${pretty(status).toLowerCase()}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text('Confirm ${pretty(status).toLowerCase()}'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await Api.instance.dio.patch(
+        '/admin/users/${user['id']}/status',
+        data: {'status': status},
+      );
+      if (mounted) {
+        snack(context, 'Account status updated.');
+        setState(() => future = load());
+      }
+    } on DioException catch (error) {
+      if (mounted) {
+        snack(
+          context,
+          error.response?.data is Map
+              ? error.response?.data['message']?.toString() ??
+                    'Could not update account.'
+              : 'Could not update account.',
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
     future: future,
@@ -1952,29 +2881,147 @@ class _UsersPageState extends State<UsersPage> {
         return ErrorPane(onRetry: () => setState(() => future = load()));
       }
       if (!s.hasData) return const Center(child: CircularProgressIndicator());
+      final payload = Map<String, dynamic>.from(s.data as Map);
+      final allUsers = (payload['items'] as List? ?? const [])
+          .map((u) => Map<String, dynamic>.from(u as Map))
+          .toList();
+      final users = statusFilter == 'ALL'
+          ? allUsers
+          : allUsers.where((u) => u['status'] == statusFilter).toList();
       return ListView(
-        children: (s.data as List)
-            .map(
-              (u) => ListTile(
-                title: Text(u['name']),
-                subtitle: Text('${u['email']} · ${u['role']} · ${u['status']}'),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (v) async {
-                    await Api.instance.dio.patch(
-                      '/admin/users/${u['id']}/status',
-                      data: {'status': v},
-                    );
-                    setState(() => future = load());
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'ACTIVE', child: Text('Activate')),
-                    PopupMenuItem(value: 'SUSPENDED', child: Text('Suspend')),
-                    PopupMenuItem(value: 'BANNED', child: Text('Ban')),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
+        children: [
+          _AdminSectionHeading(
+            title: 'People',
+            subtitle:
+                '${payload['totalItems'] ?? allUsers.length} accounts in the community',
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: search,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => setState(() => future = load()),
+            decoration: InputDecoration(
+              hintText: 'Search name or email',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                tooltip: 'Search users',
+                onPressed: () => setState(() => future = load()),
+                icon: const Icon(Icons.arrow_forward_rounded),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: ['ALL', 'ACTIVE', 'SUSPENDED', 'BANNED']
+                  .map(
+                    (value) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(value == 'ALL' ? 'All' : pretty(value)),
+                        selected: statusFilter == value,
+                        onSelected: (_) => setState(() => statusFilter = value),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (users.isEmpty)
+            const EmptyPane(
+              title: 'No matching accounts',
+              subtitle: 'Try another search or status filter.',
+            ),
+          ...users.map(
+            (user) => Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: const Color(0xff244437),
+                      child: Text(
+                        (user['name']?.toString().isNotEmpty ?? false)
+                            ? user['name'].toString()[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: Color(0xffa7e3c4),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user['name']?.toString() ?? 'Unnamed user',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            user['email']?.toString() ?? '',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 7,
+                            runSpacing: 6,
+                            children: [
+                              _AdminTag(
+                                label: pretty(
+                                  user['role']?.toString() ?? 'USER',
+                                ),
+                                icon: Icons.person_outline,
+                              ),
+                              _AdminTag(
+                                label: pretty(
+                                  user['status']?.toString() ?? 'ACTIVE',
+                                ),
+                                icon: Icons.circle,
+                                tone: user['status'] == 'ACTIVE'
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context).colorScheme.secondary,
+                              ),
+                              if ((user['city']?.toString().isNotEmpty ??
+                                  false))
+                                _AdminTag(
+                                  label: user['city'].toString(),
+                                  icon: Icons.location_on_outlined,
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: 'Account actions',
+                      onSelected: (value) => changeStatus(user, value),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'ACTIVE', child: Text('Activate')),
+                        PopupMenuItem(
+                          value: 'SUSPENDED',
+                          child: Text('Suspend'),
+                        ),
+                        PopupMenuItem(value: 'BANNED', child: Text('Ban')),
+                      ],
+                    ),
                   ],
                 ),
               ),
-            )
-            .toList(),
+            ),
+          ),
+        ],
       );
     },
   );
@@ -1988,6 +3035,8 @@ class AdminDonationsPage extends StatefulWidget {
 
 class _AdminDonationsPageState extends State<AdminDonationsPage> {
   late Future<dynamic> future;
+  final search = TextEditingController();
+  String statusFilter = 'ALL';
   @override
   void initState() {
     super.initState();
@@ -1996,6 +3045,52 @@ class _AdminDonationsPageState extends State<AdminDonationsPage> {
 
   Future<dynamic> load() async =>
       (await Api.instance.dio.get('/admin/donations')).data;
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  Future<void> removeListing(Map<String, dynamic> item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove this listing?'),
+        content: Text(
+          '“${item['title'] ?? 'Donation'}” will be removed from the community.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove listing'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await Api.instance.dio.delete('/admin/donations/${item['id']}');
+      if (mounted) {
+        snack(context, 'Listing removed.');
+        setState(() => future = load());
+      }
+    } on DioException catch (error) {
+      if (mounted) {
+        snack(
+          context,
+          error.response?.data is Map
+              ? error.response?.data['message']?.toString() ??
+                    'Could not remove listing.'
+              : 'Could not remove listing.',
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
     future: future,
@@ -2006,36 +3101,176 @@ class _AdminDonationsPageState extends State<AdminDonationsPage> {
       if (!snapshot.hasData) {
         return const Center(child: CircularProgressIndicator());
       }
-      final items = snapshot.data as List;
+      final allItems = (snapshot.data as List)
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .toList();
+      final items = allItems.where((item) {
+        final matchesStatus =
+            statusFilter == 'ALL' || item['status'] == statusFilter;
+        final query = search.text.trim().toLowerCase();
+        final matchesQuery =
+            query.isEmpty ||
+            [
+              item['title'],
+              item['donorName'],
+              item['city'],
+              item['pickupAddress'],
+            ].any(
+              (value) =>
+                  value?.toString().toLowerCase().contains(query) ?? false,
+            );
+        return matchesStatus && matchesQuery;
+      }).toList();
       if (items.isEmpty) {
-        return const EmptyPane(
-          title: 'No donations',
-          subtitle: 'No listings need review.',
-        );
+        if (allItems.isEmpty) {
+          return const EmptyPane(
+            title: 'No listings yet',
+            subtitle: 'Community listings will appear here.',
+          );
+        }
       }
       return ListView(
-        children: items.map((raw) {
-          final item = Map<String, dynamic>.from(raw);
-          return ListTile(
-            title: Text(item['title']?.toString() ?? 'Donation'),
-            subtitle: Text(
-              '${item['donorName']} · ${item['city']} · ${pretty(item['status'])}',
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
+        children: [
+          _AdminSectionHeading(
+            title: 'Listings',
+            subtitle: '${allItems.length} total community posts',
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: search,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: 'Search title, donor, or city',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                tooltip: 'Search listings',
+                onPressed: () => setState(() {}),
+                icon: const Icon(Icons.arrow_forward_rounded),
+              ),
             ),
-            trailing: PopupMenuButton<String>(
-              onSelected: (value) async {
-                if (value == 'remove') {
-                  await Api.instance.dio.delete(
-                    '/admin/donations/${item['id']}',
-                  );
-                }
-                if (mounted) setState(() => future = load());
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'remove', child: Text('Remove listing')),
-              ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children:
+                  ['ALL', 'AVAILABLE', 'RESERVED', 'PICKED_UP', 'CANCELLED']
+                      .map(
+                        (value) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(value == 'ALL' ? 'All' : pretty(value)),
+                            selected: statusFilter == value,
+                            onSelected: (_) =>
+                                setState(() => statusFilter = value),
+                          ),
+                        ),
+                      )
+                      .toList(),
             ),
-          );
-        }).toList(),
+          ),
+          const SizedBox(height: 12),
+          if (items.isEmpty)
+            const EmptyPane(
+              title: 'No matching listings',
+              subtitle: 'Try a different search or status filter.',
+            ),
+          ...items.map(
+            (item) => Card(
+              child: Padding(
+                padding: const EdgeInsets.all(15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: const Color(0xff203b31),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Icon(
+                            Icons.inventory_2_outlined,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item['title']?.toString() ?? 'Donation',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${item['donorName'] ?? 'Unknown donor'} · ${item['city'] ?? 'No city'}',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _AdminTag(
+                          label: pretty(
+                            item['status']?.toString() ?? 'AVAILABLE',
+                          ),
+                          icon: Icons.circle,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${pretty(item['category']?.toString() ?? 'OTHER')} · ${item['availableQuantity'] ?? item['quantity'] ?? 0} available',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    if ((item['pickupAddress']?.toString().isNotEmpty ?? false))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Text(
+                          item['pickupAddress'].toString(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                    const SizedBox(height: 9),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => removeListing(item),
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Remove listing'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     },
   );
@@ -2049,6 +3284,7 @@ class AdminReportsPage extends StatefulWidget {
 
 class _AdminReportsPageState extends State<AdminReportsPage> {
   late Future<dynamic> future;
+  String statusFilter = 'OPEN';
   @override
   void initState() {
     super.initState();
@@ -2067,47 +3303,186 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
       if (!snapshot.hasData) {
         return const Center(child: CircularProgressIndicator());
       }
-      final reports = snapshot.data as List;
+      final reports = (snapshot.data as List)
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .toList();
       if (reports.isEmpty) {
         return const EmptyPane(
           title: 'No reports',
           subtitle: 'New community reports will appear here.',
         );
       }
+      final visibleReports = statusFilter == 'ALL'
+          ? reports
+          : reports
+                .where((report) => report['status'] == statusFilter)
+                .toList();
       return ListView(
-        children: reports.map((raw) {
-          final report = Map<String, dynamic>.from(raw);
-          return Card(
-            child: ListTile(
-              title: Text(report['reason']?.toString() ?? 'Report'),
-              subtitle: Text(
-                '${report['reporterName']} · ${report['reportedUserName'] ?? report['donationTitle'] ?? ''}\n${report['details'] ?? ''}',
-              ),
-              isThreeLine: true,
-              trailing: PopupMenuButton<String>(
-                tooltip: 'Set report status',
-                onSelected: (status) async {
-                  await Api.instance.dio.patch(
-                    '/admin/reports/${report['id']}',
-                    queryParameters: {'status': status},
-                  );
-                  if (mounted) setState(() => future = load());
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'REVIEWED',
-                    child: Text('Mark reviewed'),
-                  ),
-                  PopupMenuItem(value: 'RESOLVED', child: Text('Resolve')),
-                  PopupMenuItem(value: 'DISMISSED', child: Text('Dismiss')),
-                ],
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
+        children: [
+          _AdminSectionHeading(
+            title: 'Community reports',
+            subtitle: '${reports.length} reports · review and resolve concerns',
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: ['OPEN', 'REVIEWED', 'RESOLVED', 'DISMISSED', 'ALL']
+                  .map(
+                    (value) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(value == 'ALL' ? 'All' : pretty(value)),
+                        selected: statusFilter == value,
+                        onSelected: (_) => setState(() => statusFilter = value),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (visibleReports.isEmpty)
+            const EmptyPane(
+              title: 'No reports in this view',
+              subtitle: 'Choose another status to see more reports.',
+            ),
+          ...visibleReports.map(
+            (report) => Card(
+              child: Padding(
+                padding: const EdgeInsets.all(15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            pretty(report['reason']?.toString() ?? 'REPORT'),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        _AdminTag(
+                          label: pretty(report['status']?.toString() ?? 'OPEN'),
+                          icon: Icons.flag_outlined,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Reported by ${report['reporterName'] ?? 'Unknown user'}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      report['reportedUserName'] != null
+                          ? 'Account: ${report['reportedUserName']}'
+                          : 'Listing: ${report['donationTitle'] ?? 'Unknown listing'}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    if ((report['details']?.toString().trim().isNotEmpty ??
+                        false))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(report['details'].toString()),
+                      ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        if (report['status'] == 'OPEN')
+                          OutlinedButton(
+                            onPressed: () =>
+                                _setReportStatus(report['id'], 'REVIEWED'),
+                            child: const Text('Mark reviewed'),
+                          ),
+                        if (report['status'] != 'RESOLVED')
+                          FilledButton.tonal(
+                            onPressed: () =>
+                                _setReportStatus(report['id'], 'RESOLVED'),
+                            child: const Text('Resolve'),
+                          ),
+                        if (report['status'] != 'DISMISSED')
+                          TextButton(
+                            onPressed: () =>
+                                _setReportStatus(report['id'], 'DISMISSED'),
+                            child: const Text('Dismiss'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          );
-        }).toList(),
+          ),
+        ],
       );
     },
   );
+
+  Future<void> _setReportStatus(dynamic id, String status) async {
+    try {
+      await Api.instance.dio.patch(
+        '/admin/reports/$id',
+        queryParameters: {'status': status},
+      );
+      if (mounted) {
+        snack(context, 'Report marked ${pretty(status).toLowerCase()}.');
+        setState(() => future = load());
+      }
+    } on DioException catch (error) {
+      if (mounted) {
+        snack(
+          context,
+          error.response?.data is Map
+              ? error.response?.data['message']?.toString() ??
+                    'Could not update report.'
+              : 'Could not update report.',
+        );
+      }
+    }
+  }
+}
+
+class _AdminTag extends StatelessWidget {
+  const _AdminTag({required this.label, required this.icon, this.tone});
+  final String label;
+  final IconData icon;
+  final Color? tone;
+  @override
+  Widget build(BuildContext context) {
+    final color = tone ?? Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .13),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class NotificationsPage extends StatefulWidget {
