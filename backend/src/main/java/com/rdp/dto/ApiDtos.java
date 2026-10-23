@@ -13,8 +13,21 @@ public final class ApiDtos {
                                   @NotBlank @Email @Size(max = 190) String email,
                                   @NotBlank @Size(min = 10, max = 72) String password,
                                   @NotNull Role role, @Size(max = 32) String phone,
-                                  @Size(max = 100) String city) {}
+                                  @Size(max = 100) String city,
+                                  @Size(max = 120) String answer1, @Size(max = 120) String answer2,
+                                  @Size(max = 120) String answer3, @Size(max = 120) String answer4) {}
     public record LoginRequest(@NotBlank @Email String email, @NotBlank String password) {}
+    public record SecurityAnswersInput(@NotBlank String currentPassword,
+                                       @NotBlank @Size(max = 120) String answer1,
+                                       @NotBlank @Size(max = 120) String answer2,
+                                       @NotBlank @Size(max = 120) String answer3,
+                                       @NotBlank @Size(max = 120) String answer4) {}
+    public record PasswordRecoveryInput(@NotBlank @Email String email,
+                                        @NotBlank @Size(max = 120) String answer1,
+                                        @NotBlank @Size(max = 120) String answer2,
+                                        @NotBlank @Size(max = 120) String answer3,
+                                        @NotBlank @Size(max = 120) String answer4,
+                                        @NotBlank @Size(min = 10, max = 72) String newPassword) {}
     public record UserView(Long id, String name, String email, String phone, String profileImageUrl,
                            String address, String city, Double latitude, Double longitude,
                            Role role, AccountStatus status, List<DonationCategory> preferredCategories,
@@ -51,10 +64,16 @@ public final class ApiDtos {
     public record RatingView(Long id, Long donationId, String donationTitle, Long donorId, String donorName,
                              Long recipientId, String recipientName, Integer score, String review, Instant createdAt) {}
     public record ConversationView(Long id, Long requestId, Long donationId, String donationTitle,
-                                   Long otherUserId, String otherUserName, Instant createdAt) {}
+                                   Long otherUserId, String otherUserName, String otherUserProfileImageUrl,
+                                   String pickupAddress, Double pickupLatitude, Double pickupLongitude,
+                                   Instant createdAt, String lastMessage, MessageKind lastMessageKind,
+                                   Instant lastMessageAt, long unreadCount) {}
     public record MessageInput(@NotBlank @Size(max = 4000) String body) {}
     public record MessageView(Long id, Long conversationId, Long senderId, String senderName,
-                              String body, Instant readAt, Instant createdAt) {}
+                              String body, MessageKind kind, String attachmentUrl, Double latitude,
+                              Double longitude, Instant readAt, Instant createdAt) {}
+    public record LocationShareInput(@NotNull @DecimalMin("-90.0") @DecimalMax("90.0") Double latitude,
+                                     @NotNull @DecimalMin("-180.0") @DecimalMax("180.0") Double longitude) {}
     public record NotificationView(Long id, NotificationType type, String title, String body,
                                    Long referenceId, boolean read, Instant createdAt) {}
     public record ReportInput(Long reportedUserId, Long donationId, @NotBlank @Size(max = 100) String reason,
@@ -64,7 +83,7 @@ public final class ApiDtos {
                              String reason, String details, ReportStatus status, Instant createdAt) {}
     public record UserStatusInput(@NotNull AccountStatus status) {}
     public record AdminStats(long totalUsers, long donors, long recipients, long activeUsers, long totalDonations,
-                             long availableDonations, long completedDonations, long pendingRequests,
+                             long availableDonations, long completedDonations, long totalRequests, long pendingRequests,
                              long openReports, List<CategoryCount> donationsByCategory) {}
     public record CategoryCount(String category, long count) {}
     public record ChatbotInput(@NotBlank @Size(max = 1000) String message) {}

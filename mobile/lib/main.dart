@@ -1,8 +1,16 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'dart:async';
@@ -11,7 +19,104 @@ import 'dart:io';
 
 import 'core/api.dart';
 
-void main() => runApp(const RdpApp());
+const recoveryQuestions = [
+  'What was the name of your first school?',
+  'What was the name of your first pet?',
+  'What city were you born in?',
+  'What is your favorite book?',
+];
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await PushNotifications.initialize();
+  runApp(const RdpApp());
+}
+
+class PushNotifications {
+  static final local = FlutterLocalNotificationsPlugin();
+  static bool firebaseReady = false;
+  static String? setupIssue;
+
+  static Future<void> initialize() async {
+    const settings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
+    await local.initialize(settings: settings);
+    const channel = AndroidNotificationChannel(
+      'sharekind_updates',
+      'ShareKind updates',
+      description: 'Requests, messages, and pickup updates',
+      importance: Importance.high,
+    );
+    await local
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(channel);
+    try {
+      if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+      firebaseReady = true;
+      await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      FirebaseMessaging.onMessage.listen((message) async {
+        final notification = message.notification;
+        if (notification == null) return;
+        await local.show(
+          id: message.hashCode,
+          title: notification.title,
+          body: notification.body,
+          notificationDetails: const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'sharekind_updates',
+              'ShareKind updates',
+              channelDescription: 'Requests, messages, and pickup updates',
+              importance: Importance.high,
+              priority: Priority.high,
+              icon: '@mipmap/ic_launcher',
+            ),
+          ),
+        );
+      });
+      FirebaseMessaging.instance.onTokenRefresh.listen(
+        (token) => _uploadToken(token),
+      );
+    } catch (error) {
+      setupIssue = error.toString();
+      debugPrint('Firebase push is not configured: $error');
+    }
+  }
+
+  static Future<void> registerDevice() async {
+    if (!firebaseReady) return;
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) await _uploadToken(token);
+    } catch (error) {
+      debugPrint('Could not register push token: $error');
+    }
+  }
+
+  static Future<void> _uploadToken(String token) async {
+    if (Api.instance.dio.options.headers['Authorization'] == null) return;
+    try {
+      await Api.instance.dio.put(
+        '/notifications/device-token',
+        data: {'token': token},
+      );
+    } on DioException catch (error) {
+      debugPrint('Could not save push token: ${error.message}');
+    }
+  }
+}
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+}
 
 class RdpApp extends StatelessWidget {
   const RdpApp({super.key});
@@ -118,6 +223,7 @@ class _GateState extends State<Gate> {
       await Api.instance.restore();
       user = await Api.instance.me();
       Api.instance.role = user?['role']?.toString();
+      Api.instance.userId = (user?['id'] as num?)?.toInt();
     } catch (_) {
       await Api.instance.setToken(null);
     }
@@ -127,10 +233,12 @@ class _GateState extends State<Gate> {
   void signedIn(Map<String, dynamic> u) => setState(() {
     user = u;
     Api.instance.role = u['role']?.toString();
+    Api.instance.userId = (u['id'] as num?)?.toInt();
   });
   Future<void> signOut() async {
     await Api.instance.setToken(null);
     Api.instance.role = null;
+    Api.instance.userId = null;
     setState(() => user = null);
   }
 
@@ -154,10 +262,16 @@ class _AuthScreenState extends State<AuthScreen> {
       email = TextEditingController(),
       password = TextEditingController(),
       city = TextEditingController();
+  final recoveryAnswers = List.generate(4, (_) => TextEditingController());
   String role = 'RECIPIENT';
   bool register = false, busy = false;
   String? error;
   Future<void> submit() async {
+    if (register &&
+        recoveryAnswers.any((answer) => answer.text.trim().isEmpty)) {
+      setState(() => error = 'Please answer all four recovery questions.');
+      return;
+    }
     setState(() {
       busy = true;
       error = null;
@@ -170,6 +284,7 @@ class _AuthScreenState extends State<AuthScreen> {
               password.text,
               role,
               city.text,
+              recoveryAnswers.map((answer) => answer.text.trim()).toList(),
             )
           : await Api.instance.login(email.text, password.text);
       await Api.instance.setToken(res['token']);
@@ -247,6 +362,21 @@ class _AuthScreenState extends State<AuthScreen> {
                     ],
                     onChanged: (v) => setState(() => role = v ?? role),
                   ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Password recovery',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Text(
+                    'Set answers you will remember. Letter case and extra spaces are ignored.',
+                  ),
+                  for (var i = 0; i < recoveryQuestions.length; i++)
+                    TextField(
+                      controller: recoveryAnswers[i],
+                      decoration: InputDecoration(
+                        labelText: recoveryQuestions[i],
+                      ),
+                    ),
                 ],
                 TextField(
                   controller: email,
@@ -280,6 +410,17 @@ class _AuthScreenState extends State<AuthScreen> {
                   }),
                   child: Text(register ? 'Sign in' : 'Create an account'),
                 ),
+                if (!register)
+                  TextButton.icon(
+                    onPressed: () => Navigator.push<void>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PasswordRecoveryPage(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.lock_reset_outlined),
+                    label: const Text('Forgot password?'),
+                  ),
               ],
             ),
           ),
@@ -297,20 +438,110 @@ class Home extends StatefulWidget {
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> {
+class _HomeState extends State<Home> with WidgetsBindingObserver {
   int index = 0;
+  String? adminRoleFilter;
+  int unreadNotifications = 0;
+  int? latestNotificationId;
+  bool notificationBaselineReady = false;
+  bool checkingNotifications = false;
+  Timer? notificationTimer;
   final myDonationsKey = GlobalKey<_DonationListState>();
+
+  @override
+  void initState() {
+    super.initState();
+    PushNotifications.registerDevice();
+    WidgetsBinding.instance.addObserver(this);
+    if (!PushNotifications.firebaseReady) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          snack(
+            context,
+            'Phone alerts need Firebase setup. See FIREBASE_PUSH_SETUP.md.',
+          );
+        }
+      });
+    }
+    _refreshNotifications(notifyNew: false);
+    notificationTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _refreshNotifications(),
+    );
+  }
+
+  @override
+  void dispose() {
+    notificationTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshNotifications();
+  }
+
+  Future<void> _refreshNotifications({bool notifyNew = true}) async {
+    if (checkingNotifications) return;
+    checkingNotifications = true;
+    try {
+      final result = await Api.instance.dio.get('/notifications');
+      final rows = (result.data as List)
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .toList();
+      final newIds = rows
+          .map((row) => row['id'])
+          .whereType<num>()
+          .map((id) => id.toInt())
+          .toList();
+      final latest = newIds.isEmpty
+          ? null
+          : newIds.reduce((a, b) => a > b ? a : b);
+      final unread = rows.where((row) => row['read'] != true).length;
+      final shouldAnnounce =
+          notifyNew &&
+          notificationBaselineReady &&
+          latest != null &&
+          (latestNotificationId == null || latest > latestNotificationId!);
+      if (mounted) {
+        setState(() => unreadNotifications = unread);
+        if (shouldAnnounce) {
+          final incoming = rows.where(
+            (row) => (row['id'] as num?)?.toInt() == latest,
+          );
+          if (incoming.isNotEmpty) {
+            snack(
+              context,
+              incoming.first['title']?.toString() ??
+                  'You have a new notification.',
+            );
+          }
+        }
+      }
+      if (latest != null &&
+          (latestNotificationId == null || latest > latestNotificationId!)) {
+        latestNotificationId = latest;
+      }
+      notificationBaselineReady = true;
+    } on DioException {
+      // The notification inbox stays available when the server reconnects.
+    } finally {
+      checkingNotifications = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = widget.user['role'];
     final donor = role == 'DONOR', admin = role == 'ADMIN';
     final labels = admin
-        ? ['Overview', 'Users', 'Donations', 'Reports']
+        ? ['Overview', 'Accounts', 'Listings', 'Requests', 'Reports']
         : donor
-        ? ['Donations', 'Requests', 'Messages', 'Profile']
+        ? ['Donations', 'Incoming requests', 'Messages', 'Profile']
         : [
             'Explore',
-            'Requests',
+            'My requests',
             'Favorites',
             'For you',
             'Messages',
@@ -318,9 +549,18 @@ class _HomeState extends State<Home> {
           ];
     final pages = admin
         ? [
-            const AdminPage(),
-            const UsersPage(),
+            AdminPage(
+              onNavigate: (destination, roleFilter) => setState(() {
+                index = destination;
+                adminRoleFilter = roleFilter;
+              }),
+            ),
+            UsersPage(
+              key: ValueKey(adminRoleFilter),
+              roleFilter: adminRoleFilter,
+            ),
             const AdminDonationsPage(),
+            const AdminRequestsPage(),
             const AdminReportsPage(),
           ]
         : donor
@@ -339,7 +579,13 @@ class _HomeState extends State<Home> {
             ProfilePage(user: widget.user),
           ];
     final icons = admin
-        ? [Icons.dashboard, Icons.people, Icons.inventory_2, Icons.flag]
+        ? [
+            Icons.dashboard_rounded,
+            Icons.groups_2_rounded,
+            Icons.inventory_2_rounded,
+            Icons.receipt_long_rounded,
+            Icons.flag_rounded,
+          ]
         : donor
         ? [
             Icons.inventory_2,
@@ -399,12 +645,49 @@ class _HomeState extends State<Home> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Notifications',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NotificationsPage()),
+            tooltip: unreadNotifications == 0
+                ? 'Notifications'
+                : '$unreadNotifications unread notifications',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationsPage()),
+              );
+              _refreshNotifications(notifyNew: false);
+            },
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined),
+                if (unreadNotifications > 0)
+                  Positioned(
+                    right: -7,
+                    top: -5,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 17,
+                        minHeight: 17,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.error,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        unreadNotifications > 99
+                            ? '99+'
+                            : '$unreadNotifications',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            icon: const Icon(Icons.notifications_outlined),
           ),
           IconButton(
             tooltip: 'ShareKind help',
@@ -430,10 +713,28 @@ class _HomeState extends State<Home> {
           ),
         ],
       ),
-      body: pages[index],
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(.025, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        ),
+        child: KeyedSubtree(key: ValueKey(index), child: pages[index]),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) => setState(() => index = i),
+        onDestinationSelected: (i) => setState(() {
+          index = i;
+          if (admin && i == 1) adminRoleFilter = null;
+        }),
         destinations: List.generate(
           labels.length,
           (i) => NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
@@ -496,7 +797,11 @@ class _DonationListState extends State<DonationList> {
     return r.data;
   }
 
-  void refresh() => setState(() => future = load());
+  void refresh() {
+    if (!mounted) return;
+    setState(() => future = load());
+  }
+
   Future<void> chooseNearby() async {
     ll.LatLng? selected = nearbyLatitude != null && nearbyLongitude != null
         ? ll.LatLng(nearbyLatitude!, nearbyLongitude!)
@@ -1467,32 +1772,136 @@ class _ChatPageState extends State<ChatPage> {
   final scroll = ScrollController();
   final List<Map<String, dynamic>> messages = [];
   WebSocketChannel? channel;
+  Timer? messageRefreshTimer;
   bool connected = false;
   String? error;
+  bool blockedByMe = false;
+  bool blockedYou = false;
+  final recorder = AudioRecorder();
+  bool recordingVoice = false;
+  bool sendingVoice = false;
+  String? voiceRecordingPath;
+  Duration voiceRecordingDuration = Duration.zero;
+  Timer? voiceRecordingTimer;
+  RTCPeerConnection? peerConnection;
+  MediaStream? localAudio;
+  bool callActive = false;
+  bool callBusy = false;
+  String? callLabel;
+  bool incomingCall = false;
+  bool micMuted = false;
+  bool speakerOn = false;
+  String? remoteCallName;
+  Map<String, dynamic>? pendingCallOffer;
+  Duration callDuration = Duration.zero;
+  Timer? callDurationTimer;
+  bool remoteCallDescriptionSet = false;
+  final List<RTCIceCandidate> pendingIceCandidates = [];
   int get conversationId => widget.conversation['id'] as int;
   @override
   void initState() {
     super.initState();
     load();
     connect();
+    loadBlockStatus();
+    messageRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) load(silent: true);
+    });
   }
 
-  Future<void> load() async {
+  Future<void> loadBlockStatus() async {
+    final otherId = (widget.conversation['otherUserId'] as num?)?.toInt();
+    if (otherId == null) return;
+    try {
+      final response = await Api.instance.dio.get('/users/$otherId/block');
+      if (mounted)
+        setState(() {
+          blockedByMe = response.data['blockedByMe'] == true;
+          blockedYou = response.data['blockedYou'] == true;
+        });
+    } on DioException {}
+  }
+
+  Future<void> toggleBlock() async {
+    final otherId = (widget.conversation['otherUserId'] as num?)?.toInt();
+    if (otherId == null) return;
+    final willBlock = !blockedByMe;
+    if (willBlock) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Block this person?'),
+          content: const Text(
+            'They will not be able to send you messages, and you will not be able to message them. You can unblock them later from this chat.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Block'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+    try {
+      final response = willBlock
+          ? await Api.instance.dio.put('/users/$otherId/block')
+          : await Api.instance.dio.delete('/users/$otherId/block');
+      if (mounted)
+        setState(() {
+          blockedByMe = response.data['blockedByMe'] == true;
+          blockedYou = response.data['blockedYou'] == true;
+        });
+      if (mounted)
+        snack(context, willBlock ? 'Person blocked.' : 'Person unblocked.');
+    } on DioException catch (e) {
+      if (mounted)
+        snack(
+          context,
+          e.response?.data?['message']?.toString() ??
+              'Could not update block settings.',
+        );
+    }
+  }
+
+  Future<void> load({bool silent = false}) async {
     try {
       final response = await Api.instance.dio.get(
         '/conversations/$conversationId/messages',
       );
-      if (mounted) {
-        setState(
-          () => messages
-            ..clear()
-            ..addAll(
-              (response.data as List).map((x) => Map<String, dynamic>.from(x)),
-            ),
-        );
-      }
+      if (!mounted) return;
+      final fetched = (response.data as List)
+          .map((x) => Map<String, dynamic>.from(x))
+          .toList();
+      final knownIds = messages.map((message) => message['id']).toSet();
+      final added = fetched.any((message) => !knownIds.contains(message['id']));
+      final merged = <Object?, Map<String, dynamic>>{
+        for (final message in messages) message['id']: message,
+        for (final message in fetched) message['id']: message,
+      }.values.toList();
+      merged.sort((a, b) {
+        final aTime =
+            DateTime.tryParse(a['createdAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime =
+            DateTime.tryParse(b['createdAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        return aTime.compareTo(bTime);
+      });
+      setState(() {
+        messages
+          ..clear()
+          ..addAll(merged);
+        error = null;
+      });
+      if (added) _scrollToLatest();
     } on DioException catch (e) {
-      if (mounted) {
+      if (!silent && mounted) {
         setState(
           () => error =
               e.response?.data?['message']?.toString() ??
@@ -1500,6 +1909,41 @@ class _ChatPageState extends State<ChatPage> {
         );
       }
     }
+  }
+
+  void _upsertMessage(Map<String, dynamic> message) {
+    if (!mounted) return;
+    final wasNew = !messages.any((m) => m['id'] == message['id']);
+    setState(() {
+      final index = messages.indexWhere((m) => m['id'] == message['id']);
+      if (index < 0) {
+        messages.add(message);
+      } else {
+        messages[index] = message;
+      }
+      messages.sort((a, b) {
+        final aTime =
+            DateTime.tryParse(a['createdAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime =
+            DateTime.tryParse(b['createdAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        return aTime.compareTo(bTime);
+      });
+    });
+    if (wasNew) _scrollToLatest();
+  }
+
+  void _scrollToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && scroll.hasClients) {
+        scroll.animateTo(
+          scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> connect() async {
@@ -1535,7 +1979,11 @@ class _ChatPageState extends State<ChatPage> {
                 .trim();
             try {
               final item = Map<String, dynamic>.from(jsonDecode(body));
-              if (mounted) setState(() => messages.add(item));
+              if (item['event'] == 'call') {
+                handleCallSignal(item);
+              } else if (mounted) {
+                _upsertMessage(item);
+              }
             } catch (_) {}
           } else if (text.startsWith('ERROR') && mounted) {
             setState(() => error = 'Chat connection rejected. Sign in again.');
@@ -1555,16 +2003,620 @@ class _ChatPageState extends State<ChatPage> {
 
   void send() {
     final body = input.text.trim();
-    if (body.isEmpty || !connected) return;
+    if (body.isEmpty || !connected || blockedByMe || blockedYou) return;
     channel?.sink.add(
       'SEND\ndestination:/app/chat/$conversationId\ncontent-type:application/json\n\n${jsonEncode({'body': body})}\u0000',
     );
     input.clear();
   }
 
+  void sendCallSignal(String type, [Map<String, dynamic> data = const {}]) {
+    if (!connected) return;
+    channel?.sink.add(
+      'SEND\ndestination:/app/calls/$conversationId\ncontent-type:application/json\n\n${jsonEncode({'signalType': type, 'signal': data})}\u0000',
+    );
+  }
+
+  Future<RTCPeerConnection> _createCallPeer() async {
+    final pc = await createPeerConnection({
+      'iceServers': [
+        {'urls': 'stun:stun.l.google.com:19302'},
+      ],
+    });
+    peerConnection = pc;
+    localAudio = await navigator.mediaDevices.getUserMedia({
+      'audio': true,
+      'video': false,
+    });
+    for (final track in localAudio!.getAudioTracks()) {
+      track.enabled = !micMuted;
+      await pc.addTrack(track, localAudio!);
+    }
+    pc.onIceCandidate = (candidate) {
+      if (candidate.candidate != null) sendCallSignal('ice', candidate.toMap());
+    };
+    pc.onConnectionState = (state) {
+      if (mounted) {
+        setState(() {
+          callActive =
+              state == RTCPeerConnectionState.RTCPeerConnectionStateConnected;
+          callLabel = callActive ? 'Voice call connected' : state.name;
+          if (callActive && callDurationTimer == null) {
+            callDurationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+              if (mounted) {
+                setState(() => callDuration += const Duration(seconds: 1));
+              }
+            });
+          }
+        });
+      }
+    };
+    return pc;
+  }
+
+  Future<void> startCall() async {
+    if (blockedByMe || blockedYou || callBusy) return;
+    if (!connected) {
+      snack(context, 'Connect to chat before calling.');
+      return;
+    }
+    setState(() {
+      callBusy = true;
+      callLabel = 'Calling…';
+      incomingCall = false;
+      remoteCallName = widget.conversation['otherUserName']?.toString();
+      callDuration = Duration.zero;
+    });
+    try {
+      final pc = await _createCallPeer();
+      final offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendCallSignal('offer', {'sdp': offer.sdp, 'type': offer.type});
+    } catch (e) {
+      await _closeCall();
+      if (mounted) snack(context, 'Could not start voice call: $e');
+    } finally {
+      if (mounted) setState(() => callBusy = false);
+    }
+  }
+
+  Future<void> handleCallSignal(Map<String, dynamic> event) async {
+    final peerId = (widget.conversation['otherUserId'] as num?)?.toInt();
+    if (peerId == null || (event['senderId'] as num?)?.toInt() != peerId)
+      return;
+    final type = event['signalType']?.toString();
+    final signal = Map<String, dynamic>.from(
+      event['signal'] as Map? ?? const {},
+    );
+    if (type == 'offer') {
+      if (callBusy || peerConnection != null) return;
+      HapticFeedback.vibrate();
+      _startIncomingRingtone();
+      pendingCallOffer = signal;
+      if (mounted) {
+        setState(() {
+          callBusy = true;
+          incomingCall = true;
+          callLabel = 'Incoming call';
+          remoteCallName = event['senderName']?.toString() ?? 'ShareKind user';
+        });
+      }
+    } else if (type == 'answer' && peerConnection != null) {
+      await peerConnection!.setRemoteDescription(
+        RTCSessionDescription(
+          signal['sdp']?.toString(),
+          signal['type']?.toString(),
+        ),
+      );
+      remoteCallDescriptionSet = true;
+      for (final candidate in pendingIceCandidates) {
+        await peerConnection!.addCandidate(candidate);
+      }
+      pendingIceCandidates.clear();
+      if (mounted) setState(() => callLabel = 'Connecting voice call…');
+    } else if (type == 'ice' && peerConnection != null) {
+      final candidate = RTCIceCandidate(
+        signal['candidate']?.toString(),
+        signal['sdpMid']?.toString(),
+        (signal['sdpMLineIndex'] as num?)?.toInt(),
+      );
+      if (remoteCallDescriptionSet) {
+        await peerConnection!.addCandidate(candidate);
+      } else {
+        pendingIceCandidates.add(candidate);
+      }
+    } else if (type == 'ice') {
+      pendingIceCandidates.add(
+        RTCIceCandidate(
+          signal['candidate']?.toString(),
+          signal['sdpMid']?.toString(),
+          (signal['sdpMLineIndex'] as num?)?.toInt(),
+        ),
+      );
+    } else if (type == 'reject') {
+      await _closeCall();
+      if (mounted) snack(context, 'Call declined.');
+    } else if (type == 'end') {
+      await _closeCall();
+      if (mounted) snack(context, 'Call ended.');
+    }
+  }
+
+  Future<void> acceptIncomingCall() async {
+    await _stopIncomingRingtone();
+    final signal = pendingCallOffer;
+    if (signal == null) return;
+    pendingCallOffer = null;
+    setState(() {
+      incomingCall = false;
+      callLabel = 'Connecting…';
+      callDuration = Duration.zero;
+    });
+    try {
+      final pc = await _createCallPeer();
+      await pc.setRemoteDescription(
+        RTCSessionDescription(
+          signal['sdp']?.toString(),
+          signal['type']?.toString(),
+        ),
+      );
+      remoteCallDescriptionSet = true;
+      for (final candidate in pendingIceCandidates) {
+        await pc.addCandidate(candidate);
+      }
+      pendingIceCandidates.clear();
+      final answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendCallSignal('answer', {'sdp': answer.sdp, 'type': answer.type});
+    } catch (e) {
+      await _closeCall();
+      if (mounted) snack(context, 'Could not answer call: $e');
+    }
+  }
+
+  Future<void> declineIncomingCall() async {
+    await _stopIncomingRingtone();
+    pendingCallOffer = null;
+    sendCallSignal('reject');
+    await _closeCall();
+  }
+
+  Future<void> toggleCallMic() async {
+    micMuted = !micMuted;
+    for (final track in localAudio?.getAudioTracks() ?? <MediaStreamTrack>[]) {
+      track.enabled = !micMuted;
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> toggleCallSpeaker() async {
+    final next = !speakerOn;
+    try {
+      await Helper.setSpeakerphoneOn(next);
+      if (mounted) setState(() => speakerOn = next);
+    } catch (e) {
+      if (mounted) snack(context, 'Could not change audio output: $e');
+    }
+  }
+
+  Future<void> endCall() async {
+    sendCallSignal('end');
+    await _closeCall();
+  }
+
+  Future<void> _closeCall() async {
+    await _stopIncomingRingtone();
+    final pc = peerConnection;
+    peerConnection = null;
+    await pc?.close();
+    final stream = localAudio;
+    localAudio = null;
+    if (stream != null) {
+      for (final track in stream.getTracks()) {
+        await track.stop();
+      }
+      await stream.dispose();
+    }
+    remoteCallDescriptionSet = false;
+    pendingIceCandidates.clear();
+    callDurationTimer?.cancel();
+    callDurationTimer = null;
+    pendingCallOffer = null;
+    try {
+      await Helper.setSpeakerphoneOn(false);
+    } catch (_) {}
+    if (mounted)
+      setState(() {
+        callActive = false;
+        callBusy = false;
+        callLabel = null;
+        incomingCall = false;
+        micMuted = false;
+        speakerOn = false;
+        callDuration = Duration.zero;
+      });
+  }
+
+  final AudioPlayer ringtonePlayer = AudioPlayer();
+
+  Future<void> _startIncomingRingtone() async {
+    try {
+      await ringtonePlayer.setAsset('assets/audio/sharekind_ringtone.wav');
+      await ringtonePlayer.setLoopMode(LoopMode.one);
+      unawaited(ringtonePlayer.play());
+    } catch (error) {
+      debugPrint('Could not play the incoming call ringtone: $error');
+    }
+  }
+
+  Future<void> _stopIncomingRingtone() async {
+    try {
+      if (ringtonePlayer.playing) await ringtonePlayer.stop();
+    } catch (_) {}
+  }
+
+  Future<void> toggleVoiceRecording() async {
+    if (blockedByMe || blockedYou) return;
+    if (recordingVoice) {
+      await sendVoiceRecording();
+      return;
+    }
+    if (sendingVoice) return;
+    try {
+      if (!await recorder.hasPermission()) {
+        snack(
+          context,
+          'Microphone permission is required to record a voice message.',
+        );
+        return;
+      }
+      voiceRecordingPath =
+          '${Directory.systemTemp.path}/sharekind-${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 64000,
+          sampleRate: 24000,
+        ),
+        path: voiceRecordingPath!,
+      );
+      voiceRecordingDuration = Duration.zero;
+      voiceRecordingTimer?.cancel();
+      voiceRecordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted)
+          setState(() => voiceRecordingDuration += const Duration(seconds: 1));
+      });
+      if (mounted) setState(() => recordingVoice = true);
+    } catch (e) {
+      voiceRecordingPath = null;
+      if (mounted) snack(context, 'Could not start recording: $e');
+    }
+  }
+
+  Future<void> cancelVoiceRecording() async {
+    voiceRecordingTimer?.cancel();
+    voiceRecordingTimer = null;
+    try {
+      await recorder.cancel();
+    } catch (_) {}
+    final path = voiceRecordingPath;
+    voiceRecordingPath = null;
+    if (path != null) {
+      try {
+        await File(path).delete();
+      } catch (_) {}
+    }
+    if (mounted)
+      setState(() {
+        recordingVoice = false;
+        voiceRecordingDuration = Duration.zero;
+      });
+  }
+
+  Future<void> sendVoiceRecording() async {
+    voiceRecordingTimer?.cancel();
+    voiceRecordingTimer = null;
+    if (mounted) setState(() => sendingVoice = true);
+    String? path;
+    try {
+      path = await recorder.stop();
+      voiceRecordingPath = null;
+      if (mounted) setState(() => recordingVoice = false);
+      final filePath = path;
+      if (filePath == null) throw StateError('The recording is empty.');
+      final response = await Api.instance.dio.post(
+        '/conversations/$conversationId/voice',
+        data: FormData.fromMap({
+          'file': await MultipartFile.fromFile(filePath, filename: 'voice.m4a'),
+        }),
+      );
+      final message = Map<String, dynamic>.from(response.data);
+      _upsertMessage(message);
+    } catch (e) {
+      final data = e is DioException ? e.response?.data : null;
+      final serverMessage = data is Map ? data['message']?.toString() : null;
+      if (mounted)
+        snack(
+          context,
+          serverMessage ?? 'Could not record or send voice message: $e',
+        );
+    } finally {
+      if (path != null) {
+        try {
+          await File(path).delete();
+        } catch (_) {}
+      }
+      if (mounted)
+        setState(() {
+          sendingVoice = false;
+          recordingVoice = false;
+          voiceRecordingDuration = Duration.zero;
+        });
+    }
+  }
+
+  Future<void> shareMyLocation() async {
+    if (blockedByMe || blockedYou) return;
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (mounted)
+          snack(context, 'Turn on location services to share your location.');
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied)
+        permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (mounted)
+          snack(context, 'Allow location access to share your location.');
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      final response = await Api.instance.dio.post(
+        '/conversations/$conversationId/location',
+        data: {'latitude': position.latitude, 'longitude': position.longitude},
+      );
+      final message = Map<String, dynamic>.from(response.data);
+      _upsertMessage(message);
+    } on DioException catch (e) {
+      if (mounted)
+        snack(
+          context,
+          e.response?.data?['message']?.toString() ??
+              'Could not share location.',
+        );
+    }
+  }
+
+  void viewLocation(double latitude, double longitude, String title) {
+    showDialog<void>(
+      context: context,
+      builder: (c) => DonationMap(
+        item: {'latitude': latitude, 'longitude': longitude, 'title': title},
+      ),
+    );
+  }
+
+  String _messageTime(Map<String, dynamic> message) {
+    final sentAt = DateTime.tryParse(message['createdAt']?.toString() ?? '')
+        ?.toLocal();
+    if (sentAt == null) return '';
+    return '${sentAt.hour.toString().padLeft(2, '0')}:${sentAt.minute.toString().padLeft(2, '0')}';
+  }
+
+  String get _callTime =>
+      '${callDuration.inMinutes.remainder(60).toString().padLeft(2, '0')}:${callDuration.inSeconds.remainder(60).toString().padLeft(2, '0')}';
+
+  Widget _callScreen() {
+    final name = remoteCallName ?? 'ShareKind user';
+    final status = incomingCall
+        ? 'Incoming voice call'
+        : callActive
+        ? _callTime
+        : callLabel ?? 'Connecting…';
+    Widget roundControl({
+      required IconData icon,
+      required String label,
+      required VoidCallback onTap,
+      bool selected = false,
+    }) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton.filledTonal(
+          onPressed: onTap,
+          iconSize: 28,
+          style: IconButton.styleFrom(
+            fixedSize: const Size(64, 64),
+            backgroundColor: selected
+                ? Colors.white
+                : Colors.white.withValues(alpha: .13),
+            foregroundColor: selected ? const Color(0xff14221e) : Colors.white,
+          ),
+          icon: Icon(icon),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
+    );
+
+    return Material(
+      color: const Color(0xff101a18),
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xff203b34), Color(0xff101a18), Color(0xff090e0d)],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 24, 28, 30),
+            child: Column(
+              children: [
+                const Text(
+                  'SHAREKIND  ·  AUDIO CALL',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    letterSpacing: 1.4,
+                    fontSize: 12,
+                  ),
+                ),
+                const Spacer(flex: 2),
+                Container(
+                  width: 132,
+                  height: 132,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xff82d6b4).withValues(alpha: .16),
+                    border: Border.all(color: Colors.white24, width: 2),
+                  ),
+                  child: Center(
+                    child: Text(
+                      name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 56,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xffa4e5c8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Text(
+                  name,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 27,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  status,
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+                const Spacer(flex: 3),
+                if (!incomingCall) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      roundControl(
+                        icon: micMuted ? Icons.mic_off : Icons.mic,
+                        label: micMuted ? 'Unmute' : 'Mute',
+                        selected: micMuted,
+                        onTap: toggleCallMic,
+                      ),
+                      roundControl(
+                        icon: speakerOn ? Icons.volume_up : Icons.hearing,
+                        label: speakerOn ? 'Speaker' : 'Earpiece',
+                        selected: speakerOn,
+                        onTap: toggleCallSpeaker,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 38),
+                ],
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (incomingCall) ...[
+                      _callActionButton(
+                        icon: Icons.call_end,
+                        label: 'Decline',
+                        color: const Color(0xffd94a50),
+                        onTap: declineIncomingCall,
+                      ),
+                      const SizedBox(width: 52),
+                      _callActionButton(
+                        icon: Icons.call,
+                        label: 'Accept',
+                        color: const Color(0xff32a36c),
+                        onTap: acceptIncomingCall,
+                      ),
+                    ] else
+                      _callActionButton(
+                        icon: Icons.call_end,
+                        label: callActive ? 'End call' : 'Cancel',
+                        color: const Color(0xffd94a50),
+                        onTap: endCall,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _callActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      IconButton.filled(
+        onPressed: onTap,
+        iconSize: 32,
+        style: IconButton.styleFrom(
+          fixedSize: const Size(72, 72),
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+        ),
+        icon: Icon(icon),
+      ),
+      const SizedBox(height: 8),
+      Text(label, style: const TextStyle(color: Colors.white70)),
+    ],
+  );
+
+  Widget messageContent(Map<String, dynamic> message) {
+    final kind = message['kind']?.toString() ?? 'TEXT';
+    if (kind == 'VOICE') {
+      final path = message['attachmentUrl']?.toString() ?? '';
+      return VoiceMessageTile(
+        url: Uri.parse(Api.instance.dio.options.baseUrl)
+            .resolve(path)
+            .toString(),
+      );
+    }
+    if (kind == 'LOCATION' &&
+        message['latitude'] is num &&
+        message['longitude'] is num) {
+      final lat = (message['latitude'] as num).toDouble();
+      final lon = (message['longitude'] as num).toDouble();
+      return OutlinedButton.icon(
+        onPressed: () => viewLocation(lat, lon, 'Shared location'),
+        icon: const Icon(Icons.location_on_outlined),
+        label: const Text('View shared location'),
+      );
+    }
+    return Text(message['body']?.toString() ?? '');
+  }
+
   @override
   void dispose() {
     channel?.sink.close();
+    messageRefreshTimer?.cancel();
+    voiceRecordingTimer?.cancel();
+    callDurationTimer?.cancel();
+    recorder.dispose();
+    ringtonePlayer.dispose();
+    _closeCall();
     input.dispose();
     scroll.dispose();
     super.dispose();
@@ -1572,89 +2624,370 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.conversation['otherUserName']?.toString() ?? 'Chat'),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(42),
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                widget.conversation['donationTitle']?.toString() ?? 'Listing',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-              Text(
-                connected ? 'Live chat connected' : 'Connecting to live chat…',
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-    body: Column(
-      children: [
-        if (error != null)
-          MaterialBanner(
-            content: Text(error!),
-            actions: [TextButton(onPressed: load, child: const Text('Retry'))],
-          ),
-        Expanded(
-          child: ListView(
-            controller: scroll,
-            padding: const EdgeInsets.all(12),
-            children: messages
-                .map(
-                  (m) => Align(
-                    alignment: Alignment.centerLeft,
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              m['senderName']?.toString() ?? 'Participant',
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
-                            Text(m['body']?.toString() ?? ''),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Row(
+    appBar: callLabel == null
+        ? AppBar(
+            title: Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: input,
-                    onSubmitted: (_) => send(),
-                    decoration: const InputDecoration(
-                      hintText: 'Message',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
+                _conversationAvatar(
+                  widget.conversation['otherUserProfileImageUrl']?.toString(),
+                  widget.conversation['otherUserName']?.toString(),
                 ),
-                IconButton(
-                  onPressed: connected ? send : null,
-                  icon: const Icon(Icons.send),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    widget.conversation['otherUserName']?.toString() ?? 'Chat',
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
-          ),
+            actions: [
+              IconButton(
+                tooltip: 'Start voice call',
+                onPressed: blockedByMe || blockedYou ? null : startCall,
+                icon: const Icon(Icons.call_outlined),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Person options',
+                onSelected: (value) async {
+                  final otherId = (widget.conversation['otherUserId'] as num?)
+                      ?.toInt();
+                  if (value == 'report' && otherId != null)
+                    await _reportPerson(
+                      context,
+                      otherId,
+                      widget.conversation['otherUserName']?.toString() ??
+                          'this person',
+                    );
+                  if (value == 'block' || value == 'unblock')
+                    await toggleBlock();
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'report',
+                    child: ListTile(
+                      leading: Icon(Icons.flag_outlined),
+                      title: Text('Report person'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: blockedByMe ? 'unblock' : 'block',
+                    child: ListTile(
+                      leading: Icon(
+                        blockedByMe ? Icons.person_add_alt_1 : Icons.block,
+                      ),
+                      title: Text(
+                        blockedByMe ? 'Unblock person' : 'Block person',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(42),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.conversation['donationTitle']?.toString() ??
+                          'Listing',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    Text(
+                      connected
+                          ? 'Live chat connected'
+                          : 'Connecting to live chat…',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : null,
+    body: Stack(
+      children: [
+        Column(
+          children: [
+            if (widget.conversation['pickupLatitude'] is num &&
+                widget.conversation['pickupLongitude'] is num)
+              MaterialBanner(
+                leading: const Icon(Icons.location_on_outlined),
+                content: Text(
+                  'Pickup location: ${widget.conversation['pickupAddress'] ?? widget.conversation['donationTitle'] ?? 'Donation'}',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => viewLocation(
+                      (widget.conversation['pickupLatitude'] as num).toDouble(),
+                      (widget.conversation['pickupLongitude'] as num)
+                          .toDouble(),
+                      widget.conversation['donationTitle']?.toString() ??
+                          'Pickup location',
+                    ),
+                    child: const Text('View map'),
+                  ),
+                ],
+              ),
+            if (blockedByMe || blockedYou)
+              MaterialBanner(
+                leading: const Icon(Icons.block),
+                content: Text(
+                  blockedByMe
+                      ? 'You blocked this person. Messaging is paused.'
+                      : 'This person blocked you. Messaging is unavailable.',
+                ),
+                actions: [
+                  if (blockedByMe)
+                    TextButton(
+                      onPressed: toggleBlock,
+                      child: const Text('Unblock'),
+                    ),
+                ],
+              ),
+            if (error != null)
+              MaterialBanner(
+                content: Text(error!),
+                actions: [
+                  TextButton(onPressed: load, child: const Text('Retry')),
+                ],
+              ),
+            Expanded(
+              child: ListView(
+                controller: scroll,
+                padding: const EdgeInsets.all(12),
+                children: messages.map((m) {
+                  final mine =
+                      (m['senderId'] as num?)?.toInt() == Api.instance.userId;
+                  final bubbleColor = mine
+                      ? const Color(0xff176b55)
+                      : const Color(0xff26332f);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Align(
+                      alignment: mine
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width * .80,
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: bubbleColor,
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(18),
+                              topRight: const Radius.circular(18),
+                              bottomLeft: Radius.circular(mine ? 18 : 5),
+                              bottomRight: Radius.circular(mine ? 5 : 18),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(13, 9, 10, 6),
+                            child: DefaultTextStyle.merge(
+                              style: const TextStyle(color: Colors.white),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (!mine)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 3),
+                                      child: Text(
+                                        m['senderName']?.toString() ??
+                                            'Participant',
+                                        style: const TextStyle(
+                                          color: Color(0xffa4e5c8),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  messageContent(m),
+                                  const SizedBox(height: 3),
+                                  Align(
+                                    alignment: Alignment.bottomRight,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          _messageTime(m),
+                                          style: const TextStyle(
+                                            color: Colors.white60,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                        if (mine) ...[
+                                          const SizedBox(width: 4),
+                                          Icon(
+                                            m['readAt'] == null
+                                                ? Icons.check
+                                                : Icons.done_all,
+                                            size: 14,
+                                            color: m['readAt'] == null
+                                                ? Colors.white60
+                                                : const Color(0xff7ed5ff),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (recordingVoice)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 7),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.fiber_manual_record,
+                              color: Colors.red,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Recording  ${voiceRecordingDuration.inMinutes.toString().padLeft(2, '0')}:${voiceRecordingDuration.inSeconds.remainder(60).toString().padLeft(2, '0')}',
+                            ),
+                            const Spacer(),
+                            TextButton.icon(
+                              onPressed: cancelVoiceRecording,
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('Discard'),
+                            ),
+                            FilledButton.icon(
+                              onPressed: sendingVoice
+                                  ? null
+                                  : sendVoiceRecording,
+                              icon: const Icon(Icons.send_rounded),
+                              label: const Text('Send'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (!recordingVoice)
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Record voice message',
+                            onPressed: blockedByMe || blockedYou || sendingVoice
+                                ? null
+                                : toggleVoiceRecording,
+                            icon: const Icon(Icons.mic_none_rounded),
+                          ),
+                          IconButton(
+                            tooltip: 'Share current location',
+                            onPressed: blockedByMe || blockedYou
+                                ? null
+                                : shareMyLocation,
+                            icon: const Icon(Icons.add_location_alt_outlined),
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: input,
+                              onSubmitted: (_) => send(),
+                              decoration: const InputDecoration(
+                                hintText: 'Message',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: connected && !blockedByMe && !blockedYou
+                                ? send
+                                : null,
+                            icon: const Icon(Icons.send),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
+        if (callLabel != null) Positioned.fill(child: _callScreen()),
       ],
     ),
+  );
+}
+
+class VoiceMessageTile extends StatefulWidget {
+  const VoiceMessageTile({super.key, required this.url});
+  final String url;
+  @override
+  State<VoiceMessageTile> createState() => _VoiceMessageTileState();
+}
+
+class _VoiceMessageTileState extends State<VoiceMessageTile> {
+  final player = AudioPlayer();
+  bool failed = false;
+  Future<void> toggle() async {
+    try {
+      if (player.playing) {
+        await player.pause();
+        return;
+      }
+      if (player.processingState == ProcessingState.idle ||
+          player.processingState == ProcessingState.completed) {
+        final token = await Api.storage.read(key: 'access_token');
+        await player.setUrl(
+          widget.url,
+          headers: token == null ? {} : {'Authorization': 'Bearer $token'},
+        );
+      }
+      await player.play();
+    } catch (_) {
+      if (mounted) setState(() => failed = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      IconButton(
+        onPressed: failed ? null : toggle,
+        icon: Icon(
+          player.playing
+              ? Icons.pause_circle_outline
+              : Icons.play_circle_outline,
+          size: 30,
+        ),
+      ),
+      StreamBuilder<Duration?>(
+        stream: player.durationStream,
+        builder: (context, snapshot) => Text(
+          failed
+              ? 'Audio unavailable'
+              : 'Voice message · ${snapshot.data?.inSeconds ?? 0}s',
+        ),
+      ),
+    ],
   );
 }
 
@@ -2099,6 +3432,8 @@ class RequestList extends StatefulWidget {
 class _RequestListState extends State<RequestList> {
   late Future<dynamic> future;
   final Set<dynamic> ratedRequests = {};
+  final Set<dynamic> busyRequests = {};
+  String statusFilter = 'ALL';
   @override
   void initState() {
     super.initState();
@@ -2121,78 +3456,180 @@ class _RequestListState extends State<RequestList> {
         return ErrorPane(onRetry: () => setState(() => future = load()));
       }
       if (!s.hasData) return const Center(child: CircularProgressIndicator());
-      final rows = s.data as List;
-      if (rows.isEmpty) {
+      final allRows = (s.data as List)
+          .map((x) => Map<String, dynamic>.from(x as Map))
+          .toList();
+      final rows = statusFilter == 'ALL'
+          ? allRows
+          : allRows.where((r) => r['status'] == statusFilter).toList();
+      if (allRows.isEmpty) {
         return const EmptyPane(
           title: 'No requests',
           subtitle: 'Requests appear here.',
         );
       }
-      return ListView(
-        children: rows.map((x) {
-          final r = Map<String, dynamic>.from(x);
-          final status = r['status'];
-          return Card(
-            child: ListTile(
-              title: Text(r['donationTitle'] ?? 'Donation'),
-              subtitle: Text(
-                '${r['recipientName'] ?? r['donorName']} · ${pretty(status)}',
-              ),
-              trailing: status == 'PENDING' && widget.incoming
-                  ? Wrap(
-                      children: [
-                        IconButton(
-                          onPressed: () => decide(r['id'], 'REJECTED'),
-                          icon: const Icon(Icons.close),
-                        ),
-                        IconButton(
-                          onPressed: () => decide(r['id'], 'ACCEPTED'),
-                          icon: const Icon(Icons.check),
-                        ),
-                      ],
-                    )
-                  : status == 'ACCEPTED' || status == 'COMPLETED'
-                  ? Wrap(
-                      children: [
-                        IconButton(
-                          tooltip: 'Chat',
-                          onPressed: () => openChat(context, r['id']),
-                          icon: const Icon(Icons.chat_bubble_outline),
-                        ),
-                        if (widget.incoming && status == 'ACCEPTED')
-                          IconButton(
-                            tooltip: 'Mark picked up',
-                            onPressed: () => complete(r['id']),
-                            icon: const Icon(Icons.done_all),
-                          ),
-                        if (!widget.incoming &&
-                            status == 'COMPLETED' &&
-                            !ratedRequests.contains(r['id']))
-                          IconButton(
-                            tooltip: 'Rate donor',
-                            onPressed: () => rate(context, r['id']),
-                            icon: const Icon(Icons.star_outline),
-                          ),
-                      ],
-                    )
-                  : null,
+      return RefreshIndicator(
+        onRefresh: refresh,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
+          children: [
+            _AdminSectionHeading(
+              title: widget.incoming ? 'Incoming requests' : 'My requests',
+              subtitle: widget.incoming
+                  ? 'Review people requesting your donations.'
+                  : 'Track requests through pickup.',
             ),
-          );
-        }).toList(),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children:
+                    [
+                          'ALL',
+                          'PENDING',
+                          'ACCEPTED',
+                          'COMPLETED',
+                          'CANCELLED',
+                          'REJECTED',
+                        ]
+                        .map(
+                          (v) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(
+                                v == 'ALL'
+                                    ? 'All'
+                                    : v == 'ACCEPTED'
+                                    ? 'Accepted / ongoing'
+                                    : pretty(v),
+                              ),
+                              selected: statusFilter == v,
+                              onSelected: (_) =>
+                                  setState(() => statusFilter = v),
+                            ),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ),
+            if (rows.isEmpty)
+              const EmptyPane(
+                title: 'No matching requests',
+                subtitle: 'Choose another status filter.',
+              ),
+            ...rows.map((x) {
+              final r = Map<String, dynamic>.from(x);
+              final status = r['status'];
+              return Card(
+                child: ListTile(
+                  title: Text(r['donationTitle'] ?? 'Donation'),
+                  subtitle: Text(
+                    '${r['recipientName'] ?? r['donorName']} · ${pretty(status)}',
+                  ),
+                  trailing: status == 'PENDING' && widget.incoming
+                      ? Wrap(
+                          children: [
+                            IconButton(
+                              onPressed: busyRequests.contains(r['id'])
+                                  ? null
+                                  : () => decide(r['id'], 'REJECTED'),
+                              icon: const Icon(Icons.close),
+                            ),
+                            IconButton(
+                              onPressed: busyRequests.contains(r['id'])
+                                  ? null
+                                  : () => decide(r['id'], 'ACCEPTED'),
+                              icon: const Icon(Icons.check),
+                            ),
+                          ],
+                        )
+                      : status == 'ACCEPTED' || status == 'COMPLETED'
+                      ? Wrap(
+                          children: [
+                            IconButton(
+                              tooltip: 'Chat',
+                              onPressed: () => openChat(context, r['id']),
+                              icon: const Icon(Icons.chat_bubble_outline),
+                            ),
+                            if (widget.incoming && status == 'ACCEPTED')
+                              IconButton(
+                                tooltip: 'Mark picked up',
+                                onPressed: () => complete(r['id']),
+                                icon: const Icon(Icons.done_all),
+                              ),
+                            if (!widget.incoming &&
+                                status == 'COMPLETED' &&
+                                !ratedRequests.contains(r['id']))
+                              IconButton(
+                                tooltip: 'Rate donor',
+                                onPressed: () => rate(context, r['id']),
+                                icon: const Icon(Icons.star_outline),
+                              ),
+                          ],
+                        )
+                      : status == 'PENDING' && !widget.incoming
+                      ? IconButton(
+                          tooltip: 'Cancel request',
+                          onPressed: busyRequests.contains(r['id'])
+                              ? null
+                              : () => cancel(r['id']),
+                          icon: const Icon(Icons.cancel_outlined),
+                        )
+                      : null,
+                ),
+              );
+            }),
+          ],
+        ),
       );
     },
   );
   Future<void> decide(dynamic id, String status) async {
-    await Api.instance.dio.patch(
-      '/requests/$id/decision',
-      data: {'status': status},
+    await _requestAction(
+      id,
+      () => Api.instance.dio.patch(
+        '/requests/$id/decision',
+        data: {'status': status},
+      ),
+      status == 'ACCEPTED' ? 'Request accepted.' : 'Request rejected.',
     );
-    await refresh();
   }
 
   Future<void> complete(dynamic id) async {
-    await Api.instance.dio.patch('/requests/$id/complete');
-    await refresh();
+    await _requestAction(
+      id,
+      () => Api.instance.dio.patch('/requests/$id/complete'),
+      'Pickup marked complete.',
+    );
+  }
+
+  Future<void> cancel(dynamic id) => _requestAction(
+    id,
+    () => Api.instance.dio.patch('/requests/$id/cancel'),
+    'Request cancelled.',
+  );
+  Future<void> _requestAction(
+    dynamic id,
+    Future<dynamic> Function() action,
+    String message,
+  ) async {
+    setState(() => busyRequests.add(id));
+    try {
+      await action();
+      await refresh();
+      if (mounted) snack(context, message);
+    } on DioException catch (e) {
+      if (mounted)
+        snack(
+          context,
+          e.response?.data is Map
+              ? e.response?.data['message']?.toString() ??
+                    'Request action failed.'
+              : 'Request action failed.',
+        );
+    } finally {
+      if (mounted) setState(() => busyRequests.remove(id));
+    }
   }
 
   Future<void> openChat(BuildContext context, dynamic requestId) async {
@@ -2281,6 +3718,18 @@ class _RequestListState extends State<RequestList> {
   }
 }
 
+Widget _conversationAvatar(String? path, String? name) {
+  final url = path == null || path.isEmpty
+      ? null
+      : Uri.parse(Api.instance.dio.options.baseUrl).resolve(path).toString();
+  return CircleAvatar(
+    backgroundImage: url == null ? null : NetworkImage(url),
+    child: url == null
+        ? Text(name != null && name.isNotEmpty ? name[0].toUpperCase() : '?')
+        : null,
+  );
+}
+
 class ConversationsPage extends StatefulWidget {
   const ConversationsPage({super.key});
   @override
@@ -2289,17 +3738,25 @@ class ConversationsPage extends StatefulWidget {
 
 class _ConversationsPageState extends State<ConversationsPage> {
   late Future<dynamic> future;
+  Timer? refreshTimer;
 
   @override
   void initState() {
     super.initState();
     future = load();
+    refreshTimer = Timer.periodic(const Duration(seconds: 6), (_) => refresh());
   }
 
   Future<dynamic> load() async =>
       (await Api.instance.dio.get('/conversations')).data;
 
   void refresh() => setState(() => future = load());
+
+  @override
+  void dispose() {
+    refreshTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
@@ -2326,24 +3783,78 @@ class _ConversationsPageState extends State<ConversationsPage> {
             final conversation = Map<String, dynamic>.from(
               conversations[index],
             );
+            final unread = (conversation['unreadCount'] as num?)?.toInt() ?? 0;
+            final lastMessage = conversation['lastMessage']?.toString();
             return Card(
               child: ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(Icons.chat_bubble_outline),
+                leading: _conversationAvatar(
+                  conversation['otherUserProfileImageUrl']?.toString(),
+                  conversation['otherUserName']?.toString(),
                 ),
                 title: Text(
                   conversation['otherUserName']?.toString() ?? 'Conversation',
                 ),
-                subtitle: Text(
-                  conversation['donationTitle']?.toString() ?? 'Listing',
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      conversation['donationTitle']?.toString() ?? 'Listing',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      lastMessage?.isNotEmpty == true
+                          ? lastMessage!
+                          : 'Start a conversation',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: unread > 0 ? FontWeight.w600 : null,
+                        color: unread > 0
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
+                    ),
+                  ],
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChatPage(conversation: conversation),
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (unread > 0)
+                      Container(
+                        constraints: const BoxConstraints(minWidth: 22),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          unread > 99 ? '99+' : '$unread',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.chevron_right),
+                  ],
                 ),
+                onTap: () async {
+                  await Navigator.push<void>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatPage(conversation: conversation),
+                    ),
+                  );
+                  if (mounted) refresh();
+                },
               ),
             );
           },
@@ -2442,6 +3953,12 @@ class _DonorProfilePageState extends State<DonorProfilePage> {
                   trailing: Text(donor['joinedAt'].toString().split('T').first),
                 ),
               ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _reportPerson(context, widget.donorId, name),
+              icon: const Icon(Icons.flag_outlined),
+              label: const Text('Report this person'),
+            ),
           ],
         );
       },
@@ -2519,16 +4036,111 @@ class _RecsPageState extends State<RecsPage> {
   );
 }
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.user});
   final Map<String, dynamic> user;
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  late Map<String, dynamic> user;
+  bool uploading = false;
+  @override
+  void initState() {
+    super.initState();
+    user = Map<String, dynamic>.from(widget.user);
+  }
+
+  String? get imageUrl {
+    final path = user['profileImageUrl']?.toString();
+    if (path == null || path.isEmpty) return null;
+    return Uri.parse(Api.instance.dio.options.baseUrl).resolve(path).toString();
+  }
+
+  Future<void> changePhoto() async {
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 82,
+      maxWidth: 1200,
+    );
+    if (image == null || !mounted) return;
+    setState(() => uploading = true);
+    try {
+      final response = await Api.instance.dio.post(
+        '/profile/photo',
+        data: FormData.fromMap({
+          'file': await MultipartFile.fromFile(
+            image.path,
+            filename: image.name,
+          ),
+        }),
+      );
+      if (mounted) {
+        setState(() => user = Map<String, dynamic>.from(response.data));
+        snack(context, 'Profile photo updated.');
+      }
+    } on DioException catch (e) {
+      if (mounted)
+        snack(
+          context,
+          e.response?.data?['message']?.toString() ??
+              'Could not upload your photo.',
+        );
+    } finally {
+      if (mounted) setState(() => uploading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(24),
     children: [
-      CircleAvatar(
-        radius: 42,
-        child: Text((user['name'] ?? '?')[0].toString().toUpperCase()),
+      Center(
+        child: Stack(
+          alignment: Alignment.bottomRight,
+          children: [
+            CircleAvatar(
+              radius: 52,
+              backgroundImage: imageUrl == null
+                  ? null
+                  : NetworkImage(imageUrl!),
+              onBackgroundImageError: imageUrl == null ? null : (_, _) {},
+              child: imageUrl == null
+                  ? Text(
+                      (user['name'] ?? '?')[0].toString().toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  : null,
+            ),
+            CircleAvatar(
+              radius: 18,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                tooltip: 'Change profile photo',
+                onPressed: uploading ? null : changePhoto,
+                icon: uploading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.camera_alt_outlined, size: 18),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      TextButton.icon(
+        onPressed: uploading ? null : changePhoto,
+        icon: const Icon(Icons.photo_camera_back_outlined),
+        label: Text(
+          uploading ? 'Uploading photo…' : 'Add or change profile photo',
+        ),
       ),
       Text(
         user['name'] ?? '',
@@ -2540,12 +4152,269 @@ class ProfilePage extends StatelessWidget {
         '${user['role']} · ${user['city'] ?? 'City not set'}',
         textAlign: TextAlign.center,
       ),
+      const SizedBox(height: 20),
+      OutlinedButton.icon(
+        onPressed: () => Navigator.push<void>(
+          context,
+          MaterialPageRoute(builder: (_) => const SecurityQuestionsSetupPage()),
+        ),
+        icon: const Icon(Icons.lock_reset_outlined),
+        label: const Text('Set or update password recovery answers'),
+      ),
     ],
   );
 }
 
+class SecurityQuestionsSetupPage extends StatefulWidget {
+  const SecurityQuestionsSetupPage({super.key});
+  @override
+  State<SecurityQuestionsSetupPage> createState() =>
+      _SecurityQuestionsSetupPageState();
+}
+
+class _SecurityQuestionsSetupPageState
+    extends State<SecurityQuestionsSetupPage> {
+  final currentPassword = TextEditingController();
+  final answers = List.generate(4, (_) => TextEditingController());
+  bool busy = false;
+  String? error;
+
+  @override
+  void dispose() {
+    currentPassword.dispose();
+    for (final answer in answers) {
+      answer.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    if (currentPassword.text.isEmpty ||
+        answers.any((answer) => answer.text.trim().isEmpty)) {
+      setState(
+        () => error = 'Enter your current password and all four answers.',
+      );
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await Api.instance.dio.put(
+        '/auth/security-questions',
+        data: {
+          'currentPassword': currentPassword.text,
+          'answer1': answers[0].text.trim(),
+          'answer2': answers[1].text.trim(),
+          'answer3': answers[2].text.trim(),
+          'answer4': answers[3].text.trim(),
+        },
+      );
+      if (mounted) {
+        snack(context, 'Password recovery answers saved.');
+        Navigator.pop(context);
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        setState(
+          () => error = e.response?.data is Map
+              ? e.response!.data['message']?.toString() ??
+                    'Could not save answers.'
+              : 'Cannot reach the server.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Password recovery')),
+    body: ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Text(
+          'Choose answers you can remember. Your answers are stored as protected hashes. You will need all four to reset your password.',
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: currentPassword,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: 'Current password'),
+        ),
+        for (var i = 0; i < recoveryQuestions.length; i++)
+          TextField(
+            controller: answers[i],
+            decoration: InputDecoration(labelText: recoveryQuestions[i]),
+          ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: busy ? null : save,
+          child: Text(busy ? 'Saving…' : 'Save recovery answers'),
+        ),
+      ],
+    ),
+  );
+}
+
+class PasswordRecoveryPage extends StatefulWidget {
+  const PasswordRecoveryPage({super.key});
+  @override
+  State<PasswordRecoveryPage> createState() => _PasswordRecoveryPageState();
+}
+
+class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
+  final email = TextEditingController();
+  final answers = List.generate(4, (_) => TextEditingController());
+  final newPassword = TextEditingController();
+  final confirmPassword = TextEditingController();
+  bool busy = false;
+  bool completed = false;
+  String? error;
+
+  @override
+  void dispose() {
+    email.dispose();
+    for (final answer in answers) {
+      answer.dispose();
+    }
+    newPassword.dispose();
+    confirmPassword.dispose();
+    super.dispose();
+  }
+
+  Future<void> reset() async {
+    if (newPassword.text.length < 10 || newPassword.text.length > 72) {
+      setState(() => error = 'Choose a password between 10 and 72 characters.');
+      return;
+    }
+    if (newPassword.text != confirmPassword.text) {
+      setState(() => error = 'The new passwords do not match.');
+      return;
+    }
+    if (answers.any((answer) => answer.text.trim().isEmpty)) {
+      setState(() => error = 'Please answer all four recovery questions.');
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await Api.instance.dio.post(
+        '/auth/password/reset',
+        data: {
+          'email': email.text.trim(),
+          'answer1': answers[0].text.trim(),
+          'answer2': answers[1].text.trim(),
+          'answer3': answers[2].text.trim(),
+          'answer4': answers[3].text.trim(),
+          'newPassword': newPassword.text,
+        },
+      );
+      if (mounted) setState(() => completed = true);
+    } on DioException catch (e) {
+      if (mounted) {
+        setState(
+          () => error = e.response?.data is Map
+              ? e.response!.data['message']?.toString() ??
+                    'Could not reset password.'
+              : 'Cannot reach the server.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Reset password')),
+    body: completed
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle_outline, size: 54),
+                  const SizedBox(height: 12),
+                  const Text('Password updated. You can sign in now.'),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Back to sign in'),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              const Text(
+                'Enter your account email and the four answers you saved when setting up recovery.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: email,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Account email'),
+              ),
+              for (var i = 0; i < recoveryQuestions.length; i++)
+                TextField(
+                  controller: answers[i],
+                  decoration: InputDecoration(labelText: recoveryQuestions[i]),
+                ),
+              TextField(
+                controller: newPassword,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'New password (10–72 characters)',
+                ),
+              ),
+              TextField(
+                controller: confirmPassword,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm new password',
+                ),
+              ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: busy ? null : reset,
+                child: Text(
+                  busy ? 'Checking answers…' : 'Verify answers and reset',
+                ),
+              ),
+            ],
+          ),
+  );
+}
+
 class AdminPage extends StatefulWidget {
-  const AdminPage({super.key});
+  const AdminPage({super.key, this.onNavigate});
+  final void Function(int destination, String? roleFilter)? onNavigate;
   @override
   State<AdminPage> createState() => _AdminPageState();
 }
@@ -2569,20 +4438,41 @@ class _AdminPageState extends State<AdminPage> {
       }
       if (!s.hasData) return const Center(child: CircularProgressIndicator());
       final stats = Map<String, dynamic>.from(s.data as Map);
-      final metrics = <(String, String, IconData)>[
-        ('totalUsers', 'Community members', Icons.groups_2_outlined),
-        ('donors', 'Donors', Icons.volunteer_activism_outlined),
-        ('recipients', 'Recipients', Icons.people_alt_outlined),
-        ('activeUsers', 'Active accounts', Icons.verified_user_outlined),
-        ('totalDonations', 'All listings', Icons.inventory_2_outlined),
-        ('availableDonations', 'Available now', Icons.storefront_outlined),
-        ('completedDonations', 'Completed pickups', Icons.task_alt_outlined),
+      final metrics = <(String, String, IconData, int, String?)>[
+        ('totalUsers', 'Community members', Icons.groups_2_outlined, 1, null),
+        ('donors', 'Donors', Icons.volunteer_activism_outlined, 1, 'DONOR'),
+        ('recipients', 'Recipients', Icons.people_alt_outlined, 1, 'RECIPIENT'),
+        (
+          'activeUsers',
+          'Active accounts',
+          Icons.verified_user_outlined,
+          1,
+          null,
+        ),
+        ('totalDonations', 'All listings', Icons.inventory_2_outlined, 2, null),
+        (
+          'availableDonations',
+          'Available now',
+          Icons.storefront_outlined,
+          2,
+          null,
+        ),
+        (
+          'completedDonations',
+          'Completed pickups',
+          Icons.task_alt_outlined,
+          2,
+          null,
+        ),
+        ('totalRequests', 'All requests', Icons.receipt_long_outlined, 3, null),
         (
           'pendingRequests',
           'Pending requests',
           Icons.mark_email_unread_outlined,
+          3,
+          null,
         ),
-        ('openReports', 'Open reports', Icons.flag_outlined),
+        ('openReports', 'Open reports', Icons.flag_outlined, 4, null),
       ];
       final categories =
           (stats['donationsByCategory'] as List? ?? const [])
@@ -2670,6 +4560,8 @@ class _AdminPageState extends State<AdminPage> {
                         value: stats[metric.$1] ?? 0,
                         label: metric.$2,
                         icon: metric.$3,
+                        onTap: () =>
+                            widget.onNavigate?.call(metric.$4, metric.$5),
                       ),
                     )
                     .toList(),
@@ -2763,45 +4655,62 @@ class _AdminMetricCard extends StatelessWidget {
     required this.value,
     required this.label,
     required this.icon,
+    required this.onTap,
   });
   final dynamic value;
   final String label;
   final IconData icon;
+  final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Icon(icon, color: Theme.of(context).colorScheme.primary),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$value',
-                style: Theme.of(context).textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(icon, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.arrow_outward_rounded,
+                  size: 16,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$value',
+                  style: Theme.of(context).textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     ),
   );
 }
 
 class UsersPage extends StatefulWidget {
-  const UsersPage({super.key});
+  const UsersPage({super.key, this.roleFilter});
+  final String? roleFilter;
   @override
   State<UsersPage> createState() => _UsersPageState();
 }
@@ -2810,9 +4719,11 @@ class _UsersPageState extends State<UsersPage> {
   late Future<dynamic> future;
   final search = TextEditingController();
   String statusFilter = 'ALL';
+  String roleFilter = 'ALL';
   @override
   void initState() {
     super.initState();
+    roleFilter = widget.roleFilter ?? 'ALL';
     future = load();
   }
 
@@ -2826,6 +4737,7 @@ class _UsersPageState extends State<UsersPage> {
     '/admin/users',
     queryParameters: {
       if (search.text.trim().isNotEmpty) 'q': search.text.trim(),
+      if (roleFilter != 'ALL') 'role': roleFilter,
       'size': 100,
     },
   )).data;
@@ -2892,7 +4804,9 @@ class _UsersPageState extends State<UsersPage> {
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
         children: [
           _AdminSectionHeading(
-            title: 'People',
+            title: roleFilter == 'ALL'
+                ? 'People'
+                : '${pretty(roleFilter)} accounts',
             subtitle:
                 '${payload['totalItems'] ?? allUsers.length} accounts in the community',
           ),
@@ -2909,6 +4823,29 @@ class _UsersPageState extends State<UsersPage> {
                 onPressed: () => setState(() => future = load()),
                 icon: const Icon(Icons.arrow_forward_rounded),
               ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: ['ALL', 'DONOR', 'RECIPIENT', 'ADMIN']
+                  .map(
+                    (value) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(
+                          value == 'ALL' ? 'All roles' : pretty(value),
+                        ),
+                        selected: roleFilter == value,
+                        onSelected: (_) => setState(() {
+                          roleFilter = value;
+                          future = load();
+                        }),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
           const SizedBox(height: 10),
@@ -3276,6 +5213,218 @@ class _AdminDonationsPageState extends State<AdminDonationsPage> {
   );
 }
 
+class AdminRequestsPage extends StatefulWidget {
+  const AdminRequestsPage({super.key});
+  @override
+  State<AdminRequestsPage> createState() => _AdminRequestsPageState();
+}
+
+class _AdminRequestsPageState extends State<AdminRequestsPage> {
+  late Future<dynamic> future;
+  final search = TextEditingController();
+  String statusFilter = 'ALL';
+  final Set<dynamic> busy = {};
+  @override
+  void initState() {
+    super.initState();
+    future = load();
+  }
+
+  Future<dynamic> load() async =>
+      (await Api.instance.dio.get('/admin/requests')).data;
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  Future<void> act(Map<String, dynamic> row, String action) async {
+    final id = row['id'];
+    setState(() => busy.add(id));
+    try {
+      if (action == 'complete') {
+        await Api.instance.dio.patch('/admin/requests/$id/complete');
+      } else {
+        await Api.instance.dio.patch(
+          '/admin/requests/$id/decision',
+          data: {'status': action},
+        );
+      }
+      if (mounted) {
+        snack(context, 'Request updated.');
+        setState(() => future = load());
+      }
+    } on DioException catch (e) {
+      if (mounted)
+        snack(
+          context,
+          e.response?.data is Map
+              ? e.response?.data['message']?.toString() ??
+                    'Could not update request.'
+              : 'Could not update request.',
+        );
+    } finally {
+      if (mounted) setState(() => busy.remove(id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<dynamic>(
+    future: future,
+    builder: (context, snapshot) {
+      if (snapshot.hasError)
+        return ErrorPane(onRetry: () => setState(() => future = load()));
+      if (!snapshot.hasData)
+        return const Center(child: CircularProgressIndicator());
+      final all = (snapshot.data as List)
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .toList();
+      final q = search.text.trim().toLowerCase();
+      final rows = all
+          .where(
+            (r) =>
+                (statusFilter == 'ALL' || r['status'] == statusFilter) &&
+                [
+                  r['donationTitle'],
+                  r['donorName'],
+                  r['recipientName'],
+                ].any((v) => v?.toString().toLowerCase().contains(q) ?? false),
+          )
+          .toList();
+      return RefreshIndicator(
+        onRefresh: () async => setState(() => future = load()),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
+          children: [
+            _AdminSectionHeading(
+              title: 'Donation requests',
+              subtitle: '${all.length} requests across the community',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: search,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                hintText: 'Search listing, donor, or recipient',
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children:
+                    [
+                          'ALL',
+                          'PENDING',
+                          'ACCEPTED',
+                          'COMPLETED',
+                          'CANCELLED',
+                          'REJECTED',
+                        ]
+                        .map(
+                          (v) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(v == 'ALL' ? 'All' : pretty(v)),
+                              selected: statusFilter == v,
+                              onSelected: (_) =>
+                                  setState(() => statusFilter = v),
+                            ),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ),
+            if (all.isEmpty)
+              const EmptyPane(
+                title: 'No requests yet',
+                subtitle: 'Donation requests will appear here.',
+              ),
+            if (all.isNotEmpty && rows.isEmpty)
+              const EmptyPane(
+                title: 'No matching requests',
+                subtitle: 'Try another search or status.',
+              ),
+            ...rows.map(
+              (r) => Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(15),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              r['donationTitle']?.toString() ?? 'Donation',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          _AdminTag(
+                            label: pretty(r['status']?.toString() ?? 'PENDING'),
+                            icon: Icons.circle,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Donor: ${r['donorName'] ?? 'Unknown'}  ·  Recipient: ${r['recipientName'] ?? 'Unknown'}',
+                      ),
+                      Text('Quantity: ${r['quantity'] ?? 1}'),
+                      if ((r['message']?.toString().isNotEmpty ?? false))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text('“${r['message']}”'),
+                        ),
+                      if (r['status'] == 'PENDING' ||
+                          r['status'] == 'ACCEPTED') ...[
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            if (r['status'] == 'PENDING')
+                              OutlinedButton.icon(
+                                onPressed: busy.contains(r['id'])
+                                    ? null
+                                    : () => act(r, 'REJECTED'),
+                                icon: const Icon(Icons.close),
+                                label: const Text('Reject'),
+                              ),
+                            if (r['status'] == 'PENDING')
+                              FilledButton.icon(
+                                onPressed: busy.contains(r['id'])
+                                    ? null
+                                    : () => act(r, 'ACCEPTED'),
+                                icon: const Icon(Icons.check),
+                                label: const Text('Approve'),
+                              ),
+                            if (r['status'] == 'ACCEPTED')
+                              FilledButton.icon(
+                                onPressed: busy.contains(r['id'])
+                                    ? null
+                                    : () => act(r, 'complete'),
+                                icon: const Icon(Icons.done_all),
+                                label: const Text('Complete'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
 class AdminReportsPage extends StatefulWidget {
   const AdminReportsPage({super.key});
   @override
@@ -3520,27 +5669,89 @@ class _NotificationsPageState extends State<NotificationsPage> {
             subtitle: 'Your notifications will show here.',
           );
         }
-        return ListView(
-          children: rows.map((raw) {
-            final row = Map<String, dynamic>.from(raw);
-            return ListTile(
-              leading: Icon(
-                row['read'] == true
-                    ? Icons.notifications_none
-                    : Icons.notifications_active_outlined,
+        return RefreshIndicator(
+          onRefresh: () async => setState(() => future = load()),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+            children: [
+              _AdminSectionHeading(
+                title: 'Your updates',
+                subtitle:
+                    '${rows.where((raw) => (raw as Map)['read'] != true).length} unread notifications',
               ),
-              title: Text(row['title']?.toString() ?? 'Update'),
-              subtitle: Text(row['body']?.toString() ?? ''),
-              onTap: row['read'] == true
-                  ? null
-                  : () async {
-                      await Api.instance.dio.patch(
-                        '/notifications/${row['id']}/read',
-                      );
-                      if (mounted) setState(() => future = load());
-                    },
-            );
-          }).toList(),
+              const SizedBox(height: 12),
+              ...rows.map((raw) {
+                final row = Map<String, dynamic>.from(raw);
+                final unread = row['read'] != true;
+                return Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: unread
+                          ? Theme.of(context).colorScheme.primary
+                                .withValues(alpha: .15)
+                          : null,
+                      child: Icon(
+                        unread
+                            ? Icons.notifications_active_outlined
+                            : Icons.notifications_none,
+                        color: unread
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
+                    ),
+                    title: Text(
+                      row['title']?.toString() ?? 'Update',
+                      style: TextStyle(
+                        fontWeight: unread ? FontWeight.w800 : FontWeight.w500,
+                      ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(row['body']?.toString() ?? ''),
+                    ),
+                    trailing: unread
+                        ? IconButton(
+                            tooltip: 'Mark as read',
+                            icon: const Icon(Icons.done),
+                            onPressed: () async {
+                              try {
+                                await Api.instance.dio.patch(
+                                  '/notifications/${row['id']}/read',
+                                );
+                                if (mounted) setState(() => future = load());
+                              } on DioException catch (e) {
+                                if (mounted)
+                                  snack(
+                                    context,
+                                    e.response?.data?['message']?.toString() ??
+                                        'Could not update notification.',
+                                  );
+                              }
+                            },
+                          )
+                        : const Icon(Icons.chevron_right),
+                    onTap: unread
+                        ? () async {
+                            try {
+                              await Api.instance.dio.patch(
+                                '/notifications/${row['id']}/read',
+                              );
+                              if (mounted) setState(() => future = load());
+                            } on DioException catch (e) {
+                              if (mounted)
+                                snack(
+                                  context,
+                                  e.response?.data?['message']?.toString() ??
+                                      'Could not update notification.',
+                                );
+                            }
+                          }
+                        : null,
+                  ),
+                );
+              }),
+            ],
+          ),
         );
       },
     ),
@@ -3676,5 +5887,85 @@ String pretty(String s) => s
     .split(' ')
     .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
     .join(' ');
+Future<void> _reportPerson(
+  BuildContext context,
+  int userId,
+  String name,
+) async {
+  String reason = 'OTHER';
+  final details = TextEditingController();
+  final submit = await showDialog<bool>(
+    context: context,
+    builder: (c) => StatefulBuilder(
+      builder: (c, update) => AlertDialog(
+        title: Text('Report $name'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              value: reason,
+              decoration: const InputDecoration(labelText: 'Reason'),
+              items: const [
+                DropdownMenuItem(
+                  value: 'HARASSMENT',
+                  child: Text('Harassment or abuse'),
+                ),
+                DropdownMenuItem(value: 'FRAUD', child: Text('Fraud or scam')),
+                DropdownMenuItem(
+                  value: 'INAPPROPRIATE',
+                  child: Text('Inappropriate behavior'),
+                ),
+                DropdownMenuItem(value: 'OTHER', child: Text('Other concern')),
+              ],
+              onChanged: (value) => update(() => reason = value ?? reason),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: details,
+              maxLines: 3,
+              maxLength: 2000,
+              decoration: const InputDecoration(
+                labelText: 'Tell us what happened',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Send report'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (submit == true) {
+    try {
+      await Api.instance.dio.post(
+        '/reports',
+        data: {
+          'reportedUserId': userId,
+          'reason': reason,
+          'details': details.text.trim(),
+        },
+      );
+      if (context.mounted)
+        snack(context, 'Report sent to the moderation team.');
+    } on DioException catch (e) {
+      if (context.mounted)
+        snack(
+          context,
+          e.response?.data?['message']?.toString() ??
+              'Could not submit the report.',
+        );
+    }
+  }
+  details.dispose();
+}
+
 void snack(BuildContext c, String m) =>
     ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));

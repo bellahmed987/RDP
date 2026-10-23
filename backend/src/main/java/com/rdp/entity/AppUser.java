@@ -30,6 +30,15 @@ public class AppUser {
     @Column(nullable = false)
     private String passwordHash;
 
+    @Column(length = 100)
+    private String securityAnswerHash1;
+    @Column(length = 100)
+    private String securityAnswerHash2;
+    @Column(length = 100)
+    private String securityAnswerHash3;
+    @Column(length = 100)
+    private String securityAnswerHash4;
+
     @Column(length = 32)
     private String phone;
 

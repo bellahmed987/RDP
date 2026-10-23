@@ -21,6 +21,9 @@ public class NotificationController {
     @GetMapping public List<NotificationView> mine(Authentication auth) {
         return notifications.mine(current.require(auth.getName()).getId());
     }
+    @GetMapping("/unread-count") public Map<String, Long> unreadCount(Authentication auth) {
+        return Map.of("count", notifications.unreadCount(current.require(auth.getName()).getId()));
+    }
     @PatchMapping("/{id}/read") public NotificationView read(Authentication auth, @PathVariable Long id) {
         return notifications.markRead(current.require(auth.getName()).getId(), id);
     }

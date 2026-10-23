@@ -6,6 +6,7 @@ class Api {
   static final instance = Api._();
   static const storage = FlutterSecureStorage();
   String? role;
+  int? userId;
   final dio = Dio(
     BaseOptions(
       baseUrl: const String.fromEnvironment(
@@ -42,6 +43,7 @@ class Api {
     String password,
     String role,
     String city,
+    List<String> recoveryAnswers,
   ) async => (await dio.post(
     '/auth/register',
     data: {
@@ -50,6 +52,10 @@ class Api {
       'password': password,
       'role': role,
       'city': city,
+      'answer1': recoveryAnswers[0],
+      'answer2': recoveryAnswers[1],
+      'answer3': recoveryAnswers[2],
+      'answer4': recoveryAnswers[3],
     },
   )).data;
   Future<Map<String, dynamic>> me() async => (await dio.get('/auth/me')).data;

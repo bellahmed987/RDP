@@ -26,10 +26,12 @@ public class AdminService {
         this.mapper = mapper; this.notifications = notifications; this.donationService = donationService;
     }
     @Transactional(readOnly = true)
-    public PageView<UserView> users(String q, int page, int size) {
+    public PageView<UserView> users(String q, Role role, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 100)), Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<AppUser> result = q == null || q.isBlank() ? users.findAll(pageable)
-                : users.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(q.trim(), q.trim(), pageable);
+        Page<AppUser> result;
+        if (q == null || q.isBlank()) result = role == null ? users.findAll(pageable) : users.findByRole(role, pageable);
+        else if (role == null) result = users.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(q.trim(), q.trim(), pageable);
+        else result = users.findByRoleAndNameContainingIgnoreCaseOrRoleAndEmailContainingIgnoreCase(role, q.trim(), role, q.trim(), pageable);
         return new PageView<>(result.getContent().stream().map(mapper::user).toList(), result.getNumber(),
                 result.getSize(), result.getTotalElements(), result.getTotalPages());
     }
@@ -49,7 +51,7 @@ public class AdminService {
         return new AdminStats(users.count(), users.countByRole(Role.DONOR), users.countByRole(Role.RECIPIENT),
                 users.countByStatus(AccountStatus.ACTIVE), donations.count(),
                 donations.countByStatus(DonationStatus.AVAILABLE), donations.countByStatus(DonationStatus.PICKED_UP),
-                requests.countByStatus(RequestStatus.PENDING), reports.countByStatus(ReportStatus.OPEN),
+                requests.count(), requests.countByStatus(RequestStatus.PENDING), reports.countByStatus(ReportStatus.OPEN),
                 Arrays.stream(DonationCategory.values()).map(c ->
                         new CategoryCount(c.name(), donations.countByCategory(c))).toList());
     }

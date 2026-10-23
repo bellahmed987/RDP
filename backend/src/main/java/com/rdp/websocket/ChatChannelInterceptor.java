@@ -13,7 +13,7 @@ import java.util.regex.*;
 
 @Component
 public class ChatChannelInterceptor implements ChannelInterceptor {
-    private static final Pattern CHAT_DESTINATION = Pattern.compile("^/(?:topic/conversations|app/chat)/(\\d+)$");
+    private static final Pattern CHAT_DESTINATION = Pattern.compile("^/(?:topic/conversations|app/chat|app/calls)/(\\d+)$");
     private final JwtService jwt;
     private final RdpUserDetailsService users;
     private final ConversationService conversations;
@@ -43,8 +43,8 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
                 throw new MessageDeliveryException(message, "Only private conversation destinations are allowed.");
             if (accessor.getUser() == null) throw new MessageDeliveryException(message, "Authentication is required.");
             conversations.authorize(Long.parseLong(matcher.group(1)), accessor.getUser().getName());
-            if (command == StompCommand.SEND && !destination.startsWith("/app/chat/"))
-                throw new MessageDeliveryException(message, "Messages must be sent to the application destination.");
+            if (command == StompCommand.SEND && !destination.startsWith("/app/chat/") && !destination.startsWith("/app/calls/"))
+                throw new MessageDeliveryException(message, "Send to an authorized application destination.");
             if (command == StompCommand.SUBSCRIBE && !destination.startsWith("/topic/conversations/"))
                 throw new MessageDeliveryException(message, "Subscribe to the conversation topic.");
         }

@@ -19,6 +19,12 @@ public class ChatMessage {
     private AppUser sender;
     @Column(nullable = false, length = 4000)
     private String body;
+    @Enumerated(EnumType.STRING) @Column(length = 16)
+    private MessageKind kind = MessageKind.TEXT;
+    @Column(length = 500)
+    private String attachmentUrl;
+    private Double latitude;
+    private Double longitude;
     private Instant readAt;
     @CreationTimestamp @Column(nullable = false, updatable = false)
     private Instant createdAt;

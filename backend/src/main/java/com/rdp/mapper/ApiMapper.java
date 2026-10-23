@@ -34,7 +34,8 @@ public class ApiMapper {
     }
     public MessageView message(ChatMessage m) {
         return new MessageView(m.getId(), m.getConversation().getId(), m.getSender().getId(),
-                m.getSender().getName(), m.getBody(), m.getReadAt(), m.getCreatedAt());
+                m.getSender().getName(), m.getBody(), m.getKind() == null ? MessageKind.TEXT : m.getKind(),
+                m.getAttachmentUrl(), m.getLatitude(), m.getLongitude(), m.getReadAt(), m.getCreatedAt());
     }
     public NotificationView notification(AppNotification n) {
         return new NotificationView(n.getId(), n.getType(), n.getTitle(), n.getBody(),

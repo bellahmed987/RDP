@@ -48,6 +48,10 @@ public class RequestService {
         return requests.findByDonationDonorIdOrderByCreatedAtDesc(donor.getId()).stream().map(mapper::request).toList();
     }
     @Transactional(readOnly = true)
+    public List<RequestView> allForAdmin() {
+        return requests.findAllByOrderByCreatedAtDesc().stream().map(mapper::request).toList();
+    }
+    @Transactional(readOnly = true)
     public RequestView get(String email, Long id) {
         AppUser actor = current.require(email);
         DonationRequest request = findRequest(id);
@@ -58,10 +62,13 @@ public class RequestService {
     }
     @Transactional
     public RequestView decide(String email, Long id, RequestStatus decision) {
-        AppUser donor = requireDonor(email);
+        AppUser donor = current.require(email);
+        if (donor.getRole() != Role.DONOR && donor.getRole() != Role.ADMIN)
+            throw ApiException.forbidden("Only donors or administrators can manage incoming requests.");
         DonationRequest request = findRequest(id);
         Donation donation = request.getDonation();
-        if (!donation.getDonor().getId().equals(donor.getId())) throw ApiException.forbidden("This request belongs to another donor.");
+        if (donor.getRole() != Role.ADMIN && !donation.getDonor().getId().equals(donor.getId()))
+            throw ApiException.forbidden("This request belongs to another donor.");
         if (request.getStatus() != RequestStatus.PENDING) throw ApiException.conflict("Only pending requests can be accepted or rejected.");
         if (decision != RequestStatus.ACCEPTED && decision != RequestStatus.REJECTED)
             throw ApiException.badRequest("Choose ACCEPTED or REJECTED.");
@@ -91,10 +98,13 @@ public class RequestService {
     }
     @Transactional
     public RequestView complete(String email, Long id) {
-        AppUser donor = requireDonor(email);
+        AppUser donor = current.require(email);
+        if (donor.getRole() != Role.DONOR && donor.getRole() != Role.ADMIN)
+            throw ApiException.forbidden("Only donors or administrators can complete pickups.");
         DonationRequest request = findRequest(id);
         Donation donation = request.getDonation();
-        if (!donation.getDonor().getId().equals(donor.getId())) throw ApiException.forbidden("This request belongs to another donor.");
+        if (donor.getRole() != Role.ADMIN && !donation.getDonor().getId().equals(donor.getId()))
+            throw ApiException.forbidden("This request belongs to another donor.");
         if (request.getStatus() != RequestStatus.ACCEPTED) throw ApiException.conflict("Only an accepted pickup can be completed.");
         request.setStatus(RequestStatus.COMPLETED);
         if (donation.getAvailableQuantity() == 0) donation.setStatus(DonationStatus.PICKED_UP);

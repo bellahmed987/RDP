@@ -26,12 +26,12 @@ public class DonationRequestController {
     @GetMapping("/requests/{id}") public RequestView get(Authentication auth, @PathVariable Long id) {
         return requests.get(auth.getName(), id);
     }
-    @PatchMapping("/requests/{id}/decision") @PreAuthorize("hasRole('DONOR')")
+    @PatchMapping("/requests/{id}/decision") @PreAuthorize("hasAnyRole('DONOR','ADMIN')")
     public RequestView decide(Authentication auth, @PathVariable Long id, @Valid @RequestBody DecisionInput input) {
         return requests.decide(auth.getName(), id, input.status());
     }
     @PatchMapping("/requests/{id}/cancel") @PreAuthorize("hasRole('RECIPIENT')")
     public RequestView cancel(Authentication auth, @PathVariable Long id) { return requests.cancel(auth.getName(), id); }
-    @PatchMapping("/requests/{id}/complete") @PreAuthorize("hasRole('DONOR')")
+    @PatchMapping("/requests/{id}/complete") @PreAuthorize("hasAnyRole('DONOR','ADMIN')")
     public RequestView complete(Authentication auth, @PathVariable Long id) { return requests.complete(auth.getName(), id); }
 }

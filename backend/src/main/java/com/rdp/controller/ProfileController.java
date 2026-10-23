@@ -4,6 +4,8 @@ import com.rdp.dto.ApiDtos.*;
 import com.rdp.service.ProfileService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -14,5 +16,9 @@ public class ProfileController {
     @GetMapping public UserView get(Authentication auth) { return profiles.get(auth.getName()); }
     @PutMapping public UserView update(Authentication auth, @Valid @RequestBody ProfileUpdate input) {
         return profiles.update(auth.getName(), input);
+    }
+    @PostMapping(value = "/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public UserView uploadPhoto(Authentication auth, @RequestPart("file") MultipartFile file) {
+        return profiles.uploadPhoto(auth.getName(), file);
     }
 }

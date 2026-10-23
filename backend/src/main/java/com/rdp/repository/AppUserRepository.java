@@ -15,5 +15,8 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
     long countByRole(Role role);
     long countByStatus(AccountStatus status);
     Page<AppUser> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(String name, String email, Pageable pageable);
+    Page<AppUser> findByRole(Role role, Pageable pageable);
+    Page<AppUser> findByRoleAndNameContainingIgnoreCaseOrRoleAndEmailContainingIgnoreCase(Role nameRole, String name,
+                                                                                         Role emailRole, String email, Pageable pageable);
     List<AppUser> findTop20ByOrderByCreatedAtDesc();
 }
