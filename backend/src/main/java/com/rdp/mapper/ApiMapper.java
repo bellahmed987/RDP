@@ -9,7 +9,7 @@ import java.util.ArrayList;
 @Component
 public class ApiMapper {
     public UserView user(AppUser u) {
-        return new UserView(u.getId(), u.getName(), u.getEmail(), u.getPhone(), u.getProfileImageUrl(),
+        return new UserView(u.getId(), u.getName(), u.getUsername(), u.getUsername() == null ? u.getEmail() : null, u.getPhone(), u.getProfileImageUrl(),
                 u.getAddress(), u.getCity(), u.getLatitude(), u.getLongitude(), u.getRole(), u.getStatus(),
                 new ArrayList<>(u.getPreferredCategories()), u.getCreatedAt());
     }

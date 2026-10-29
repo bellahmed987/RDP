@@ -10,25 +10,25 @@ public final class ApiDtos {
     private ApiDtos() {}
 
     public record RegisterRequest(@NotBlank @Size(max = 120) String name,
-                                  @NotBlank @Email @Size(max = 190) String email,
+                                  @NotBlank @Pattern(regexp = "[A-Za-z0-9_]{3,30}") String username,
                                   @NotBlank @Size(min = 10, max = 72) String password,
                                   @NotNull Role role, @Size(max = 32) String phone,
                                   @Size(max = 100) String city,
                                   @Size(max = 120) String answer1, @Size(max = 120) String answer2,
                                   @Size(max = 120) String answer3, @Size(max = 120) String answer4) {}
-    public record LoginRequest(@NotBlank @Email String email, @NotBlank String password) {}
+    public record LoginRequest(@NotBlank String username, @NotBlank String password) {}
     public record SecurityAnswersInput(@NotBlank String currentPassword,
                                        @NotBlank @Size(max = 120) String answer1,
                                        @NotBlank @Size(max = 120) String answer2,
                                        @NotBlank @Size(max = 120) String answer3,
                                        @NotBlank @Size(max = 120) String answer4) {}
-    public record PasswordRecoveryInput(@NotBlank @Email String email,
+    public record PasswordRecoveryInput(@NotBlank String username,
                                         @NotBlank @Size(max = 120) String answer1,
                                         @NotBlank @Size(max = 120) String answer2,
                                         @NotBlank @Size(max = 120) String answer3,
                                         @NotBlank @Size(max = 120) String answer4,
                                         @NotBlank @Size(min = 10, max = 72) String newPassword) {}
-    public record UserView(Long id, String name, String email, String phone, String profileImageUrl,
+    public record UserView(Long id, String name, String username, String email, String phone, String profileImageUrl,
                            String address, String city, Double latitude, Double longitude,
                            Role role, AccountStatus status, List<DonationCategory> preferredCategories,
                            Instant createdAt) {}

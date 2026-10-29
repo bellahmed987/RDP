@@ -24,6 +24,9 @@ public class AppUser {
     @Column(nullable = false, length = 120)
     private String name;
 
+    @Column(unique = true, length = 30)
+    private String username;
+
     @Column(nullable = false, unique = true, length = 190)
     private String email;
 

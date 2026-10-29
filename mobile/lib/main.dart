@@ -259,16 +259,36 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final name = TextEditingController(),
-      email = TextEditingController(),
+      username = TextEditingController(),
       password = TextEditingController(),
       city = TextEditingController();
   final recoveryAnswers = List.generate(4, (_) => TextEditingController());
   String role = 'RECIPIENT';
-  bool register = false, busy = false;
+  bool register = false, recoveryStep = false, busy = false, accountCreated = false;
   String? error;
+
+  bool validateAccountDetails() {
+    final user = username.text.trim();
+    if (name.text.trim().isEmpty || user.length < 3 || user.length > 30 ||
+        !RegExp(r'^[A-Za-z0-9_]+$').hasMatch(user) || password.text.length < 10) {
+      setState(() => error = 'Enter your name, a username of 3–30 letters, numbers or underscores, and a password of at least 10 characters.');
+      return false;
+    }
+    return true;
+  }
+
+  void continueToRecovery() {
+    if (!validateAccountDetails()) return;
+    setState(() { recoveryStep = true; error = null; });
+  }
+
   Future<void> submit() async {
-    if (register &&
-        recoveryAnswers.any((answer) => answer.text.trim().isEmpty)) {
+    if (register && !recoveryStep) {
+      continueToRecovery();
+      return;
+    }
+    if (register && !validateAccountDetails()) return;
+    if (register && recoveryAnswers.any((answer) => answer.text.trim().isEmpty)) {
       setState(() => error = 'Please answer all four recovery questions.');
       return;
     }
@@ -277,18 +297,22 @@ class _AuthScreenState extends State<AuthScreen> {
       error = null;
     });
     try {
-      final res = register
-          ? await Api.instance.register(
-              name.text,
-              email.text,
-              password.text,
-              role,
-              city.text,
-              recoveryAnswers.map((answer) => answer.text.trim()).toList(),
-            )
-          : await Api.instance.login(email.text, password.text);
-      await Api.instance.setToken(res['token']);
-      widget.onSignedIn(Map<String, dynamic>.from(res['user']));
+      if (register) {
+        await Api.instance.register(
+          name.text.trim(), username.text.trim(), password.text, role, city.text.trim(),
+          recoveryAnswers.map((answer) => answer.text.trim()).toList(),
+        );
+        await Api.instance.setToken(null);
+        if (!mounted) return;
+        setState(() { register = false; recoveryStep = false; accountCreated = true; error = null; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account created successfully. Sign in with your username.')),
+        );
+      } else {
+        final res = await Api.instance.login(username.text.trim(), password.text);
+        await Api.instance.setToken(res['token']);
+        widget.onSignedIn(Map<String, dynamic>.from(res['user']));
+      }
     } on DioException catch (e) {
       setState(
         () => error = e.response?.data is Map
@@ -338,11 +362,31 @@ class _AuthScreenState extends State<AuthScreen> {
                   'Good things find good people.',
                   textAlign: TextAlign.center,
                 ),
+                if (accountCreated) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff203b31),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Text(
+                      'Account created successfully. Sign in with your username.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
-                if (register) ...[
+                if (register && !recoveryStep) ...[
                   TextField(
                     controller: name,
                     decoration: const InputDecoration(labelText: 'Name'),
+                  ),
+                  TextField(
+                    controller: username,
+                    textCapitalization: TextCapitalization.none,
+                    autocorrect: false,
+                    decoration: const InputDecoration(labelText: 'Username', hintText: '3–30 letters, numbers or _'),
                   ),
                   TextField(
                     controller: city,
@@ -362,53 +406,53 @@ class _AuthScreenState extends State<AuthScreen> {
                     ],
                     onChanged: (v) => setState(() => role = v ?? role),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Password recovery',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  TextField(
+                    controller: password,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Password (10+ characters)'),
                   ),
-                  const Text(
-                    'Set answers you will remember. Letter case and extra spaces are ignored.',
-                  ),
+                ] else if (register) ...[
+                  Text('Password recovery', style: Theme.of(context).textTheme.titleMedium),
+                  const Text('Answer these questions to help recover your account later.'),
                   for (var i = 0; i < recoveryQuestions.length; i++)
-                    TextField(
-                      controller: recoveryAnswers[i],
-                      decoration: InputDecoration(
-                        labelText: recoveryQuestions[i],
-                      ),
-                    ),
-                ],
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                TextField(
-                  controller: password,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Password (10+ characters)',
+                    TextField(controller: recoveryAnswers[i], decoration: InputDecoration(labelText: recoveryQuestions[i])),
+                ] else ...[
+                  TextField(
+                    controller: username,
+                    textCapitalization: TextCapitalization.none,
+                    autocorrect: false,
+                    decoration: const InputDecoration(labelText: 'Username'),
                   ),
-                ),
+                  TextField(
+                    controller: password,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Password'),
+                  ),
+                ],
                 if (error != null)
                   Text(error!, style: const TextStyle(color: Colors.red)),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: busy ? null : submit,
+                  onPressed: busy ? null : (register && !recoveryStep ? continueToRecovery : submit),
                   child: Text(
                     busy
                         ? 'Please wait…'
                         : register
-                        ? 'Create account'
+                        ? recoveryStep ? 'Create account' : 'Next'
                         : 'Sign in',
                   ),
                 ),
                 TextButton(
                   onPressed: () => setState(() {
-                    register = !register;
+                    if (register && recoveryStep) {
+                      recoveryStep = false;
+                    } else {
+                      register = !register;
+                      recoveryStep = false;
+                    }
                     error = null;
                   }),
-                  child: Text(register ? 'Sign in' : 'Create an account'),
+                  child: Text(register ? (recoveryStep ? 'Back to account details' : 'Sign in') : 'Create an account'),
                 ),
                 if (!register)
                   TextButton.icon(
@@ -4147,7 +4191,7 @@ class _ProfilePageState extends State<ProfilePage> {
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.headlineSmall,
       ),
-      Text(user['email'] ?? '', textAlign: TextAlign.center),
+      Text(user['username'] ?? user['email'] ?? '', textAlign: TextAlign.center),
       Text(
         '${user['role']} · ${user['city'] ?? 'City not set'}',
         textAlign: TextAlign.center,
@@ -4274,7 +4318,7 @@ class PasswordRecoveryPage extends StatefulWidget {
 }
 
 class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
-  final email = TextEditingController();
+  final username = TextEditingController();
   final answers = List.generate(4, (_) => TextEditingController());
   final newPassword = TextEditingController();
   final confirmPassword = TextEditingController();
@@ -4284,7 +4328,7 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
 
   @override
   void dispose() {
-    email.dispose();
+    username.dispose();
     for (final answer in answers) {
       answer.dispose();
     }
@@ -4314,7 +4358,7 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
       await Api.instance.dio.post(
         '/auth/password/reset',
         data: {
-          'email': email.text.trim(),
+          'username': username.text.trim(),
           'answer1': answers[0].text.trim(),
           'answer2': answers[1].text.trim(),
           'answer3': answers[2].text.trim(),
@@ -4363,13 +4407,12 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
             padding: const EdgeInsets.all(20),
             children: [
               const Text(
-                'Enter your account email and the four answers you saved when setting up recovery.',
+                'Enter your username and the four answers you saved when setting up recovery.',
               ),
               const SizedBox(height: 12),
               TextField(
-                controller: email,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Account email'),
+                controller: username,
+                decoration: const InputDecoration(labelText: 'Username'),
               ),
               for (var i = 0; i < recoveryQuestions.length; i++)
                 TextField(
@@ -4902,7 +4945,7 @@ class _UsersPageState extends State<UsersPage> {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            user['email']?.toString() ?? '',
+                            user['username']?.toString() ?? user['email']?.toString() ?? '',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: Theme.of(context)

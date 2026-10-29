@@ -33,10 +33,11 @@ public class AuthService {
     @Transactional
     public AuthResponse register(RegisterRequest input) {
         if (input.role() == Role.ADMIN) throw ApiException.forbidden("Admin accounts are created only through the secure development bootstrap.");
-        String email = input.email().trim().toLowerCase();
-        if (users.existsByEmailIgnoreCase(email)) throw ApiException.conflict("An account with this email already exists.");
+        String username = input.username().trim().toLowerCase(Locale.ROOT);
+        if (users.existsByUsernameIgnoreCase(username)) throw ApiException.conflict("That username is already taken.");
+        String email = username.toLowerCase(Locale.ROOT) + "@accounts.sharekind.invalid";
         AppUser user = new AppUser();
-        user.setName(input.name().trim()); user.setEmail(email); user.setPasswordHash(passwords.encode(input.password()));
+        user.setName(input.name().trim()); user.setUsername(username); user.setEmail(email); user.setPasswordHash(passwords.encode(input.password()));
         user.setPhone(input.phone()); user.setCity(input.city()); user.setRole(input.role()); user.setStatus(AccountStatus.ACTIVE);
         String[] answers = {input.answer1(), input.answer2(), input.answer3(), input.answer4()};
         boolean anyAnswer = java.util.Arrays.stream(answers).anyMatch(a -> a != null && !a.isBlank());
@@ -44,17 +45,19 @@ public class AuthService {
             throw ApiException.badRequest("Please answer all four recovery questions, or leave all four blank.");
         if (anyAnswer) saveSecurityAnswers(user, answers);
         user = users.save(user);
-        return new AuthResponse(jwt.create(user), "Bearer", mapper.user(user));
+        return new AuthResponse(null, "Bearer", mapper.user(user));
     }
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest input) {
+        String identifier = input.username().trim();
+        AppUser user = users.findByUsernameIgnoreCase(identifier).orElseGet(() ->
+                users.findByEmailIgnoreCase(identifier).orElseThrow(() ->
+                        new ApiException(HttpStatus.UNAUTHORIZED, "Username or password is incorrect.")));
         try {
-            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(input.email().trim().toLowerCase(), input.password()));
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(user.getEmail(), input.password()));
         } catch (AuthenticationException ex) {
-            throw new ApiException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Email or password is incorrect, or the account is inactive.");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Username or password is incorrect, or the account is inactive.");
         }
-        AppUser user = users.findByEmailIgnoreCase(input.email().trim()).orElseThrow(() ->
-                new ApiException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Email or password is incorrect."));
         return new AuthResponse(jwt.create(user), "Bearer", mapper.user(user));
     }
     @Transactional(readOnly = true)
@@ -73,8 +76,8 @@ public class AuthService {
 
     @Transactional
     public void resetPassword(PasswordRecoveryInput input, String remoteAddress) {
-        String email = input.email().trim().toLowerCase(Locale.ROOT);
-        String key = email + "|" + (remoteAddress == null ? "unknown" : remoteAddress);
+        String username = input.username().trim();
+        String key = username.toLowerCase(Locale.ROOT) + "|" + (remoteAddress == null ? "unknown" : remoteAddress);
         RecoveryWindow window = recoveryWindows.computeIfAbsent(key, ignored -> new RecoveryWindow());
         synchronized (window) {
             long now = System.currentTimeMillis();
@@ -86,7 +89,8 @@ public class AuthService {
                 throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many recovery attempts. Try again in 15 minutes.");
         }
 
-        AppUser user = users.findByEmailIgnoreCase(email).orElse(null);
+        AppUser user = users.findByUsernameIgnoreCase(username).orElseGet(() ->
+                users.findByEmailIgnoreCase(username).orElse(null));
         boolean matches = user != null && user.getSecurityAnswerHash1() != null
                 && user.getSecurityAnswerHash2() != null && user.getSecurityAnswerHash3() != null
                 && user.getSecurityAnswerHash4() != null;
@@ -98,7 +102,7 @@ public class AuthService {
         }
         if (!matches) {
             synchronized (window) { window.failures++; }
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "Email or recovery answers are incorrect, or recovery has not been set up.");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Username or recovery answers are incorrect, or recovery has not been set up.");
         }
 
         user.setPasswordHash(passwords.encode(input.newPassword()));

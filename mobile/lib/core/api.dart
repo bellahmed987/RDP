@@ -32,14 +32,14 @@ class Api {
     if (token != null) dio.options.headers['Authorization'] = 'Bearer $token';
   }
 
-  Future<Map<String, dynamic>> login(String email, String password) async =>
+  Future<Map<String, dynamic>> login(String username, String password) async =>
       (await dio.post(
         '/auth/login',
-        data: {'email': email, 'password': password},
+        data: {'username': username, 'password': password},
       )).data;
   Future<Map<String, dynamic>> register(
     String name,
-    String email,
+    String username,
     String password,
     String role,
     String city,
@@ -48,7 +48,7 @@ class Api {
     '/auth/register',
     data: {
       'name': name,
-      'email': email,
+      'username': username,
       'password': password,
       'role': role,
       'city': city,
