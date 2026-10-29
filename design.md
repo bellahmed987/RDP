@@ -48,6 +48,8 @@ Use the current Material 3 theme as the source of shared colors. Do not add unre
 
 Keep role-based navigation simple and predictable. Show only the sections that apply to the signed-in role, while keeping chats, notifications, profile, and sign-out easy to find.
 
+For recipient accounts, keep four primary bottom destinations: Explore, Requests, Chats, and Profile. Expose Favorites and personalized recommendations as prominent shortcuts on Explore, with a clear route back to Explore from those secondary screens.
+
 ### Recipients
 
 - **Explore:** Search and filter listings, switch between list and map, and make distance/location information easy to scan.
@@ -80,6 +82,7 @@ Keep role-based navigation simple and predictable. Show only the sections that a
 
 - **Sign in:** Username and password, with clear validation, loading feedback, and a visible password recovery path.
 - **Create account:** First collect account details; continue to a separate recovery-question step; then show a persistent success confirmation and return to sign-in. Do not sign the user in automatically after signup.
+- Present account creation as a guided two-step flow with a visible progress indicator and clear donor/recipient choices.
 - Keep recovery questions and password reset language plain and private. Never display stored answers after setup.
 
 ## Maps and location

@@ -254,6 +254,23 @@ class _GateState extends State<Gate> {
       : Home(user: user!, onSignOut: signOut);
 }
 
+class _AuthGlow extends StatelessWidget {
+  const _AuthGlow({required this.size, required this.color});
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: color,
+      boxShadow: [BoxShadow(color: color, blurRadius: 110, spreadRadius: 12)],
+    ),
+  );
+}
+
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key, required this.onSignedIn});
   final ValueChanged<Map<String, dynamic>> onSignedIn;
@@ -271,7 +288,8 @@ class _AuthScreenState extends State<AuthScreen> {
   bool register = false,
       recoveryStep = false,
       busy = false,
-      accountCreated = false;
+      accountCreated = false,
+      passwordVisible = false;
   String? error;
 
   bool validateAccountDetails() {
@@ -356,179 +374,481 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 450),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  width: 76,
-                  height: 76,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xff123a34),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: const Icon(
-                    Icons.volunteer_activism,
-                    size: 40,
-                    color: Color(0xff20dfbd),
-                  ),
+  Widget _authField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool obscure = false,
+    String? hint,
+    TextCapitalization capitalization = TextCapitalization.sentences,
+    bool autocorrect = true,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextField(
+      controller: controller,
+      obscureText: obscure && !passwordVisible,
+      textCapitalization: capitalization,
+      autocorrect: autocorrect,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon),
+        suffixIcon: obscure
+            ? IconButton(
+                tooltip: passwordVisible ? 'Hide password' : 'Show password',
+                onPressed: () =>
+                    setState(() => passwordVisible = !passwordVisible),
+                icon: Icon(
+                  passwordVisible
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  'ShareKind',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                const Text(
-                  'Good things find good people.',
-                  textAlign: TextAlign.center,
-                ),
-                if (accountCreated) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xff123a34),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Text(
-                      'Account created successfully. Sign in with your username.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                if (register && !recoveryStep) ...[
-                  TextField(
-                    controller: name,
-                    decoration: const InputDecoration(labelText: 'Name'),
-                  ),
-                  TextField(
-                    controller: username,
-                    textCapitalization: TextCapitalization.none,
-                    autocorrect: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Username',
-                      hintText: '3–30 letters, numbers or _',
-                    ),
-                  ),
-                  TextField(
-                    controller: city,
-                    decoration: const InputDecoration(labelText: 'City'),
-                  ),
-                  DropdownButtonFormField(
-                    initialValue: role,
-                    decoration: const InputDecoration(
-                      labelText: 'Account type',
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'RECIPIENT',
-                        child: Text('Recipient'),
-                      ),
-                      DropdownMenuItem(value: 'DONOR', child: Text('Donor')),
-                    ],
-                    onChanged: (v) => setState(() => role = v ?? role),
-                  ),
-                  TextField(
-                    controller: password,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Password (10+ characters)',
-                    ),
-                  ),
-                ] else if (register) ...[
-                  Text(
-                    'Password recovery',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const Text(
-                    'Answer these questions to help recover your account later.',
-                  ),
-                  for (var i = 0; i < recoveryQuestions.length; i++)
-                    TextField(
-                      controller: recoveryAnswers[i],
-                      decoration: InputDecoration(
-                        labelText: recoveryQuestions[i],
-                      ),
-                    ),
-                ] else ...[
-                  TextField(
-                    controller: username,
-                    textCapitalization: TextCapitalization.none,
-                    autocorrect: false,
-                    decoration: const InputDecoration(labelText: 'Username'),
-                  ),
-                  TextField(
-                    controller: password,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                  ),
-                ],
-                if (error != null)
-                  Text(error!, style: const TextStyle(color: Colors.red)),
-                const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: busy
-                      ? null
-                      : (register && !recoveryStep
-                            ? continueToRecovery
-                            : submit),
-                  child: Text(
-                    busy
-                        ? 'Please wait…'
-                        : register
-                        ? recoveryStep
-                              ? 'Create account'
-                              : 'Next'
-                        : 'Sign in',
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => setState(() {
-                    if (register && recoveryStep) {
-                      recoveryStep = false;
-                    } else {
-                      register = !register;
-                      recoveryStep = false;
-                    }
-                    error = null;
-                  }),
-                  child: Text(
-                    register
-                        ? (recoveryStep ? 'Back to account details' : 'Sign in')
-                        : 'Create an account',
-                  ),
-                ),
-                if (!register)
-                  TextButton.icon(
-                    onPressed: () => Navigator.push<void>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PasswordRecoveryPage(),
-                      ),
-                    ),
-                    icon: const Icon(Icons.lock_reset_outlined),
-                    label: const Text('Forgot password?'),
-                  ),
-              ],
-            ),
-          ),
-        ),
+              )
+            : null,
       ),
     ),
   );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Stack(
+      children: [
+        const Positioned(
+          top: -125,
+          right: -110,
+          child: _AuthGlow(size: 310, color: Color(0x3320dfbd)),
+        ),
+        SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 26),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 470),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xff123a34),
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(
+                                color: const Color(0xff1e695d),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.volunteer_activism_rounded,
+                              color: Color(0xff20dfbd),
+                            ),
+                          ),
+                          const SizedBox(width: 11),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ShareKind',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -.3,
+                                ),
+                              ),
+                              Text(
+                                'GOOD THINGS, SHARED',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  letterSpacing: 1.4,
+                                  color: Color(0xff20dfbd),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 27),
+                      Text(
+                        register
+                            ? (recoveryStep
+                                  ? 'A little security\nfor your account.'
+                                  : 'Join your local\nsharing community.')
+                            : 'Good things find\ntheir next home.',
+                        style: Theme.of(context).textTheme.headlineMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1.1,
+                              height: 1.05,
+                            ),
+                      ),
+                      const SizedBox(height: 9),
+                      Text(
+                        register
+                            ? (recoveryStep
+                                  ? 'Set recovery answers now, so you can get back in if you forget your password.'
+                                  : 'Pass along what you no longer need, or find something useful nearby.')
+                            : 'A friendly place to give useful items a second life.',
+                        style: const TextStyle(
+                          color: Color(0xffa9b8bb),
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(19, 20, 19, 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xff141c20),
+                          borderRadius: BorderRadius.circular(25),
+                          border: Border.all(color: const Color(0xff2a383c)),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x33000000),
+                              blurRadius: 28,
+                              offset: Offset(0, 12),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (register) ...[
+                              Row(
+                                children: [
+                                  Text(
+                                    recoveryStep
+                                        ? 'STEP 2 OF 2'
+                                        : 'STEP 1 OF 2',
+                                    style: const TextStyle(
+                                      color: Color(0xff20dfbd),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(9),
+                                      child: LinearProgressIndicator(
+                                        value: recoveryStep ? 1 : .5,
+                                        minHeight: 5,
+                                        backgroundColor: const Color(
+                                          0xff293438,
+                                        ),
+                                        color: const Color(0xff20dfbd),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                            ],
+                            Text(
+                              register
+                                  ? (recoveryStep
+                                        ? 'Account recovery'
+                                        : 'Create your account')
+                                  : 'Welcome back',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              register
+                                  ? (recoveryStep
+                                        ? 'Your answers stay private.'
+                                        : 'It only takes a minute to get started.')
+                                  : 'Sign in to continue sharing.',
+                              style: const TextStyle(
+                                color: Color(0xff91a2a5),
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            if (accountCreated) ...[
+                              Container(
+                                padding: const EdgeInsets.all(13),
+                                margin: const EdgeInsets.only(bottom: 14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff153a36),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: const Color(0xff22695d),
+                                  ),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Color(0xff20dfbd),
+                                    ),
+                                    SizedBox(width: 9),
+                                    Expanded(
+                                      child: Text(
+                                        'Account created. Sign in with your username.',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            if (register && !recoveryStep) ...[
+                              _authField(
+                                controller: name,
+                                label: 'Your name',
+                                icon: Icons.person_outline_rounded,
+                              ),
+                              _authField(
+                                controller: username,
+                                label: 'Username',
+                                hint: '3–30 letters, numbers or _',
+                                icon: Icons.alternate_email_rounded,
+                                capitalization: TextCapitalization.none,
+                                autocorrect: false,
+                              ),
+                              _authField(
+                                controller: city,
+                                label: 'City',
+                                icon: Icons.location_city_outlined,
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  'I want to',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xffaebdc0),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _roleChoice(
+                                      'RECIPIENT',
+                                      'Find items',
+                                      Icons.search_rounded,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _roleChoice(
+                                      'DONOR',
+                                      'Share items',
+                                      Icons.volunteer_activism_outlined,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              _authField(
+                                controller: password,
+                                label: 'Password',
+                                hint: 'At least 10 characters',
+                                icon: Icons.lock_outline_rounded,
+                                obscure: true,
+                                capitalization: TextCapitalization.none,
+                                autocorrect: false,
+                              ),
+                            ] else if (register) ...[
+                              for (var i = 0; i < recoveryQuestions.length; i++)
+                                _authField(
+                                  controller: recoveryAnswers[i],
+                                  label: recoveryQuestions[i],
+                                  icon: Icons.shield_outlined,
+                                ),
+                            ] else ...[
+                              _authField(
+                                controller: username,
+                                label: 'Username',
+                                icon: Icons.alternate_email_rounded,
+                                capitalization: TextCapitalization.none,
+                                autocorrect: false,
+                              ),
+                              _authField(
+                                controller: password,
+                                label: 'Password',
+                                icon: Icons.lock_outline_rounded,
+                                obscure: true,
+                                capitalization: TextCapitalization.none,
+                                autocorrect: false,
+                              ),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  onPressed: () => Navigator.push<void>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const PasswordRecoveryPage(),
+                                    ),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.lock_reset_rounded,
+                                    size: 17,
+                                  ),
+                                  label: const Text('Forgot password?'),
+                                ),
+                              ),
+                            ],
+                            if (error != null) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff3d2025),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  error!,
+                                  style: const TextStyle(
+                                    color: Color(0xffffa1aa),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            SizedBox(
+                              height: 54,
+                              child: FilledButton.icon(
+                                onPressed: busy
+                                    ? null
+                                    : (register && !recoveryStep
+                                          ? continueToRecovery
+                                          : submit),
+                                icon: busy
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Icon(
+                                        register && !recoveryStep
+                                            ? Icons.arrow_forward_rounded
+                                            : register
+                                            ? Icons.favorite_rounded
+                                            : Icons.login_rounded,
+                                      ),
+                                label: Text(
+                                  busy
+                                      ? 'Please wait…'
+                                      : register
+                                      ? (recoveryStep
+                                            ? 'Create account'
+                                            : 'Continue')
+                                      : 'Sign in',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Center(
+                              child: TextButton(
+                                onPressed: () => setState(() {
+                                  if (register && recoveryStep) {
+                                    recoveryStep = false;
+                                  } else {
+                                    register = !register;
+                                    recoveryStep = false;
+                                  }
+                                  error = null;
+                                }),
+                                child: Text(
+                                  register
+                                      ? (recoveryStep
+                                            ? 'Back to account details'
+                                            : 'Already have an account? Sign in')
+                                      : 'New to ShareKind? Create an account',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.handshake_outlined,
+                            size: 16,
+                            color: Color(0xff20dfbd),
+                          ),
+                          SizedBox(width: 7),
+                          Text(
+                            'Give useful things another life.',
+                            style: TextStyle(
+                              color: Color(0xff8fa1a4),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _roleChoice(String value, String label, IconData icon) {
+    final selected = role == value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(15),
+      onTap: () => setState(() => role = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xff123a34) : const Color(0xff1a2327),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: selected ? const Color(0xff20dfbd) : const Color(0xff2b393d),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected
+                  ? const Color(0xff20dfbd)
+                  : const Color(0xff9eafb2),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : const Color(0xffb6c3c5),
+                ),
+              ),
+            ),
+            if (selected)
+              const Icon(
+                Icons.check_circle_rounded,
+                size: 16,
+                color: Color(0xff20dfbd),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class Home extends StatefulWidget {
@@ -672,7 +992,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             ProfilePage(user: widget.user),
           ]
         : [
-            const DonationList(mine: false),
+            DonationList(
+              mine: false,
+              onSavedPage: () => setState(() => index = 2),
+              onForYouPage: () => setState(() => index = 3),
+            ),
             const RequestList(incoming: false),
             const FavoritesPage(),
             const RecsPage(),
@@ -702,8 +1026,18 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             Icons.chat_bubble_outline,
             Icons.person,
           ];
+    final navIndexes = role == 'RECIPIENT'
+        ? const [0, 1, 4, 5]
+        : List<int>.generate(labels.length, (i) => i);
     return Scaffold(
       appBar: AppBar(
+        leading: role == 'RECIPIENT' && (index == 2 || index == 3)
+            ? IconButton(
+                tooltip: 'Back to Explore',
+                onPressed: () => setState(() => index = 0),
+                icon: const Icon(Icons.arrow_back_rounded),
+              )
+            : null,
         title: Row(
           children: [
             Container(
@@ -832,23 +1166,35 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         child: KeyedSubtree(key: ValueKey(index), child: pages[index]),
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
+        selectedIndex: navIndexes
+            .indexOf(index)
+            .clamp(0, navIndexes.length - 1)
+            .toInt(),
         onDestinationSelected: (i) => setState(() {
-          index = i;
-          if (admin && i == 1) adminRoleFilter = null;
+          index = navIndexes[i];
+          if (admin && index == 1) adminRoleFilter = null;
         }),
-        destinations: List.generate(
-          labels.length,
-          (i) => NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
-        ),
+        destinations: navIndexes
+            .map(
+              (i) =>
+                  NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
+            )
+            .toList(),
       ),
     );
   }
 }
 
 class DonationList extends StatefulWidget {
-  const DonationList({super.key, required this.mine});
+  const DonationList({
+    super.key,
+    required this.mine,
+    this.onSavedPage,
+    this.onForYouPage,
+  });
   final bool mine;
+  final VoidCallback? onSavedPage;
+  final VoidCallback? onForYouPage;
   @override
   State<DonationList> createState() => _DonationListState();
 }
@@ -959,6 +1305,61 @@ class _DonationListState extends State<DonationList> {
     });
   }
 
+  Widget _exploreShortcut({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback? onTap,
+    required Color tone,
+  }) => Material(
+    color: tone,
+    borderRadius: BorderRadius.circular(16),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xff20dfbd), size: 20),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xffaebdc0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 11,
+              color: Color(0xff829497),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
   Widget _categoryChip(String label, String? value) => Padding(
     padding: const EdgeInsets.only(right: 8),
     child: ChoiceChip(
@@ -1030,6 +1431,49 @@ class _DonationListState extends State<DonationList> {
   @override
   Widget build(BuildContext context) => Column(
     children: [
+      if (!widget.mine)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'A little good, close by.',
+                style: Theme.of(context).textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -.4),
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                'Find useful things shared by people near you.',
+                style: TextStyle(color: Color(0xff9eafb2)),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _exploreShortcut(
+                      icon: Icons.bookmark_rounded,
+                      title: 'Saved items',
+                      subtitle: 'Your shortlist',
+                      onTap: widget.onSavedPage,
+                      tone: const Color(0xff153a36),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _exploreShortcut(
+                      icon: Icons.auto_awesome_rounded,
+                      title: 'Picked for you',
+                      subtitle: 'Personalized finds',
+                      onTap: widget.onForYouPage,
+                      tone: const Color(0xff282a25),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       if (!widget.mine)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
@@ -1158,36 +1602,41 @@ class _DonationListState extends State<DonationList> {
               child: ListView(
                 padding: const EdgeInsets.all(12),
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 2, 4, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.mine
-                              ? 'Your listings'
-                              : 'Find something useful',
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: Theme.of(context).colorScheme.onSurface,
-                              ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.mine
-                              ? 'Manage what you have shared with your community.'
-                              : 'Good things are being shared near you.',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
-                        ),
-                      ],
+                  if (widget.mine)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 2, 4, 14),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Your listings',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Manage what you’ve shared.',
+                                  style: TextStyle(color: Color(0xff9eafb2)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: () => showDialog(
+                              context: context,
+                              builder: (_) => DonationForm(onSaved: refresh),
+                            ),
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Add'),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                   ...items.map(
                     (x) => DonationCard(
                       item: Map<String, dynamic>.from(x),
@@ -3828,6 +4277,136 @@ class DonationMap extends StatelessWidget {
   }
 }
 
+class _RequestJourney extends StatelessWidget {
+  const _RequestJourney({required this.status});
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final completedSteps = status == 'PENDING'
+        ? 1
+        : status == 'ACCEPTED'
+        ? 2
+        : 3;
+    const labels = ['Requested', 'Accepted', 'Received'];
+    return Row(
+      children: List.generate(labels.length, (index) {
+        final reached = index < completedSteps;
+        return Expanded(
+          child: Row(
+            children: [
+              Column(
+                children: [
+                  Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: reached
+                          ? const Color(0xff20dfbd)
+                          : const Color(0xff273438),
+                      border: Border.all(
+                        color: reached
+                            ? const Color(0xff20dfbd)
+                            : const Color(0xff3a484b),
+                      ),
+                    ),
+                    child: reached
+                        ? const Icon(
+                            Icons.check_rounded,
+                            size: 12,
+                            color: Color(0xff071512),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    labels[index],
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: reached
+                          ? const Color(0xffdce8e5)
+                          : const Color(0xff7c8e91),
+                    ),
+                  ),
+                ],
+              ),
+              if (index < labels.length - 1)
+                Expanded(
+                  child: Container(
+                    height: 2,
+                    margin: const EdgeInsets.only(
+                      left: 5,
+                      right: 5,
+                      bottom: 17,
+                    ),
+                    color: completedSteps > index + 1
+                        ? const Color(0xff20dfbd)
+                        : const Color(0xff2d393d),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _RequestStatCard extends StatelessWidget {
+  const _RequestStatCard({
+    required this.label,
+    required this.count,
+    required this.icon,
+    required this.color,
+  });
+  final String label;
+  final int count;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(11, 11, 8, 10),
+    decoration: BoxDecoration(
+      color: const Color(0xff151d21),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: const Color(0xff29383c)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 15, color: color),
+            const Spacer(),
+            Text(
+              '$count',
+              style: TextStyle(
+                color: color,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Color(0xffaebdc0),
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class RequestList extends StatefulWidget {
   const RequestList({super.key, required this.incoming});
   final bool incoming;
@@ -3885,7 +4464,50 @@ class _RequestListState extends State<RequestList> {
                   ? 'Review people requesting your donations.'
                   : 'Track requests through pickup.',
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _RequestStatCard(
+                    label: widget.incoming ? 'To review' : 'Waiting',
+                    count: allRows
+                        .where((r) => r['status'] == 'PENDING')
+                        .length,
+                    icon: Icons.hourglass_top_rounded,
+                    color: const Color(0xffffc66d),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _RequestStatCard(
+                    label: 'In progress',
+                    count: allRows
+                        .where((r) => r['status'] == 'ACCEPTED')
+                        .length,
+                    icon: Icons.local_shipping_outlined,
+                    color: const Color(0xff20dfbd),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _RequestStatCard(
+                    label: 'Completed',
+                    count: allRows
+                        .where((r) => r['status'] == 'COMPLETED')
+                        .length,
+                    icon: Icons.task_alt_rounded,
+                    color: const Color(0xff7bd89c),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Your activity',
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -3977,6 +4599,12 @@ class _RequestListState extends State<RequestList> {
                           _requestStatusBadge(status?.toString() ?? 'PENDING'),
                         ],
                       ),
+                      if (status == 'PENDING' ||
+                          status == 'ACCEPTED' ||
+                          status == 'COMPLETED') ...[
+                        const SizedBox(height: 15),
+                        _RequestJourney(status: status.toString()),
+                      ],
                       if (status == 'ACCEPTED' &&
                           (r['pickupAddress']?.toString().isNotEmpty ??
                               false)) ...[
