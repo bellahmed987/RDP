@@ -8,19 +8,19 @@ The design should feel trustworthy, humane, practical, and easy to use on a phon
 
 ## Visual direction
 
-Keep the existing dark forest-green identity, then apply it consistently across every screen. Use mint green for primary actions and selected states, warm amber sparingly for highlights, and restrained red for destructive or urgent states. Use neutral dark surfaces with enough contrast between the page, cards, and inputs.
+Use a deep charcoal foundation with vivid teal as the primary action color. Keep the interface warm and community-minded with amber highlights used sparingly and restrained coral for destructive or urgent states. Use clear layers between the page, cards, and inputs. Listing photos should lead each card, while status, donor identity, location, and next actions remain easy to scan.
 
 | Token | Value | Use |
 | --- | --- | --- |
-| Page background | `#101714` | Main app background |
-| Raised surface | `#1B2622` | Cards, forms, dialogs |
-| Navigation surface | `#151F1B` | Bottom navigation |
-| Primary mint | `#82D6B4` | Main actions, links, selected icons |
-| Forest green | `#176B55` | Brand and supporting emphasis |
-| Warm amber | `#E8B56D` | Small highlights and secondary emphasis |
+| Page background | `#0C1114` | Main app background |
+| Raised surface | `#151D21` | Cards, forms, dialogs |
+| Navigation surface | `#11181C` | Bottom navigation |
+| Primary teal | `#20DFBD` | Main actions, links, selected icons |
+| Deep teal | `#123A34` | Brand and supporting emphasis |
+| Warm amber | `#FFC66D` | Small highlights and secondary emphasis |
 | Primary text | `#EDF5F0` | Headings and important content |
-| Secondary text | `#AABBB2` | Supporting text and metadata |
-| Border | `#34443D` | Input outlines and separators |
+| Secondary text | `#AEBDBF` | Supporting text and metadata |
+| Border | `#29383C` | Input outlines and separators |
 | Error | Use the theme error color | Validation and destructive feedback |
 
 Use the current Material 3 theme as the source of shared colors. Do not add unrelated per-screen colors. Check contrast for all text, icons, badges, and disabled controls.

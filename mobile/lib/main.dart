@@ -126,18 +126,19 @@ class RdpApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff176b55),
+        seedColor: const Color(0xff19d5b2),
         brightness: Brightness.dark,
-        primary: const Color(0xff82d6b4),
-        secondary: const Color(0xffe8b56d),
-        surface: const Color(0xff1b2622),
+        primary: const Color(0xff20dfbd),
+        secondary: const Color(0xffffc66d),
+        surface: const Color(0xff171f23),
       ),
       useMaterial3: true,
-      scaffoldBackgroundColor: const Color(0xff101714),
+      scaffoldBackgroundColor: const Color(0xff0c1114),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xff101714),
+        backgroundColor: Color(0xff0c1114),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+        centerTitle: false,
         titleTextStyle: TextStyle(
           color: Color(0xffedf5f0),
           fontSize: 20,
@@ -145,27 +146,29 @@ class RdpApp extends StatelessWidget {
         ),
       ),
       cardTheme: CardThemeData(
-        color: const Color(0xff1b2622),
+        color: const Color(0xff151d21),
         surfaceTintColor: Colors.transparent,
-        elevation: 1,
-        shadowColor: Colors.black.withValues(alpha: .22),
-        margin: const EdgeInsets.only(bottom: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        elevation: 0,
+        margin: const EdgeInsets.only(bottom: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: const BorderSide(color: Color(0xff253237)),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xff1b2622),
+        fillColor: const Color(0xff151d21),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: Color(0xff34443d)),
+          borderSide: const BorderSide(color: Color(0xff29383c)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: Color(0xff82d6b4), width: 1.5),
+          borderSide: const BorderSide(color: Color(0xff20dfbd), width: 1.5),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -181,9 +184,10 @@ class RdpApp extends StatelessWidget {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: const Color(0xff151f1b),
-        indicatorColor: const Color(0xff294b3e),
+        backgroundColor: const Color(0xff11181c),
+        indicatorColor: const Color(0xff163d38),
         elevation: 8,
+        height: 72,
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 11,
@@ -194,7 +198,7 @@ class RdpApp extends StatelessWidget {
         ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: const Color(0xff1b2622),
+        backgroundColor: const Color(0xff171f23),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       ),
@@ -264,14 +268,22 @@ class _AuthScreenState extends State<AuthScreen> {
       city = TextEditingController();
   final recoveryAnswers = List.generate(4, (_) => TextEditingController());
   String role = 'RECIPIENT';
-  bool register = false, recoveryStep = false, busy = false, accountCreated = false;
+  bool register = false,
+      recoveryStep = false,
+      busy = false,
+      accountCreated = false;
   String? error;
 
   bool validateAccountDetails() {
     final user = username.text.trim();
-    if (name.text.trim().isEmpty || user.length < 3 || user.length > 30 ||
-        !RegExp(r'^[A-Za-z0-9_]+$').hasMatch(user) || password.text.length < 10) {
-      setState(() => error = 'Enter your name, a username of 3–30 letters, numbers or underscores, and a password of at least 10 characters.');
+    if (name.text.trim().isEmpty ||
+        user.length < 3 ||
+        user.length > 30 ||
+        !RegExp(r'^[A-Za-z0-9_]+$').hasMatch(user) ||
+        password.text.length < 10) {
+      setState(
+        () => error = 'Enter your name, a username of 3–30 letters, numbers or underscores, and a password of at least 10 characters.',
+      );
       return false;
     }
     return true;
@@ -279,7 +291,10 @@ class _AuthScreenState extends State<AuthScreen> {
 
   void continueToRecovery() {
     if (!validateAccountDetails()) return;
-    setState(() { recoveryStep = true; error = null; });
+    setState(() {
+      recoveryStep = true;
+      error = null;
+    });
   }
 
   Future<void> submit() async {
@@ -288,7 +303,8 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
     if (register && !validateAccountDetails()) return;
-    if (register && recoveryAnswers.any((answer) => answer.text.trim().isEmpty)) {
+    if (register &&
+        recoveryAnswers.any((answer) => answer.text.trim().isEmpty)) {
       setState(() => error = 'Please answer all four recovery questions.');
       return;
     }
@@ -299,17 +315,33 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       if (register) {
         await Api.instance.register(
-          name.text.trim(), username.text.trim(), password.text, role, city.text.trim(),
+          name.text.trim(),
+          username.text.trim(),
+          password.text,
+          role,
+          city.text.trim(),
           recoveryAnswers.map((answer) => answer.text.trim()).toList(),
         );
         await Api.instance.setToken(null);
         if (!mounted) return;
-        setState(() { register = false; recoveryStep = false; accountCreated = true; error = null; });
+        setState(() {
+          register = false;
+          recoveryStep = false;
+          accountCreated = true;
+          error = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account created successfully. Sign in with your username.')),
+          const SnackBar(
+            content: Text(
+              'Account created successfully. Sign in with your username.',
+            ),
+          ),
         );
       } else {
-        final res = await Api.instance.login(username.text.trim(), password.text);
+        final res = await Api.instance.login(
+          username.text.trim(),
+          password.text,
+        );
         await Api.instance.setToken(res['token']);
         widget.onSignedIn(Map<String, dynamic>.from(res['user']));
       }
@@ -340,13 +372,13 @@ class _AuthScreenState extends State<AuthScreen> {
                   height: 76,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: const Color(0xff203b31),
+                    color: const Color(0xff123a34),
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: const Icon(
                     Icons.volunteer_activism,
                     size: 40,
-                    color: Color(0xff82d6b4),
+                    color: Color(0xff20dfbd),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -367,7 +399,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xff203b31),
+                      color: const Color(0xff123a34),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Text(
@@ -386,7 +418,10 @@ class _AuthScreenState extends State<AuthScreen> {
                     controller: username,
                     textCapitalization: TextCapitalization.none,
                     autocorrect: false,
-                    decoration: const InputDecoration(labelText: 'Username', hintText: '3–30 letters, numbers or _'),
+                    decoration: const InputDecoration(
+                      labelText: 'Username',
+                      hintText: '3–30 letters, numbers or _',
+                    ),
                   ),
                   TextField(
                     controller: city,
@@ -409,13 +444,25 @@ class _AuthScreenState extends State<AuthScreen> {
                   TextField(
                     controller: password,
                     obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Password (10+ characters)'),
+                    decoration: const InputDecoration(
+                      labelText: 'Password (10+ characters)',
+                    ),
                   ),
                 ] else if (register) ...[
-                  Text('Password recovery', style: Theme.of(context).textTheme.titleMedium),
-                  const Text('Answer these questions to help recover your account later.'),
+                  Text(
+                    'Password recovery',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Text(
+                    'Answer these questions to help recover your account later.',
+                  ),
                   for (var i = 0; i < recoveryQuestions.length; i++)
-                    TextField(controller: recoveryAnswers[i], decoration: InputDecoration(labelText: recoveryQuestions[i])),
+                    TextField(
+                      controller: recoveryAnswers[i],
+                      decoration: InputDecoration(
+                        labelText: recoveryQuestions[i],
+                      ),
+                    ),
                 ] else ...[
                   TextField(
                     controller: username,
@@ -433,12 +480,18 @@ class _AuthScreenState extends State<AuthScreen> {
                   Text(error!, style: const TextStyle(color: Colors.red)),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: busy ? null : (register && !recoveryStep ? continueToRecovery : submit),
+                  onPressed: busy
+                      ? null
+                      : (register && !recoveryStep
+                            ? continueToRecovery
+                            : submit),
                   child: Text(
                     busy
                         ? 'Please wait…'
                         : register
-                        ? recoveryStep ? 'Create account' : 'Next'
+                        ? recoveryStep
+                              ? 'Create account'
+                              : 'Next'
                         : 'Sign in',
                   ),
                 ),
@@ -452,7 +505,11 @@ class _AuthScreenState extends State<AuthScreen> {
                     }
                     error = null;
                   }),
-                  child: Text(register ? (recoveryStep ? 'Back to account details' : 'Sign in') : 'Create an account'),
+                  child: Text(
+                    register
+                        ? (recoveryStep ? 'Back to account details' : 'Sign in')
+                        : 'Create an account',
+                  ),
                 ),
                 if (!register)
                   TextButton.icon(
@@ -650,16 +707,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         title: Row(
           children: [
             Container(
-              width: 34,
-              height: 34,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
-                color: const Color(0xff203b31),
-                borderRadius: BorderRadius.circular(11),
+                color: const Color(0xff123a34),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: const Color(0xff1a655b)),
               ),
               child: const Icon(
                 Icons.volunteer_activism,
-                size: 19,
-                color: Color(0xff82d6b4),
+                size: 20,
+                color: Color(0xff20dfbd),
               ),
             ),
             const SizedBox(width: 10),
@@ -901,52 +959,131 @@ class _DonationListState extends State<DonationList> {
     });
   }
 
+  Widget _categoryChip(String label, String? value) => Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: ChoiceChip(
+      label: Text(label),
+      selected: category == value,
+      onSelected: (_) {
+        setState(() => category = value);
+        refresh();
+      },
+      showCheckmark: false,
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: category == value
+            ? const Color(0xff071512)
+            : const Color(0xffadbdc0),
+      ),
+      backgroundColor: const Color(0xff151d21),
+      selectedColor: const Color(0xff20dfbd),
+      side: BorderSide(
+        color: category == value
+            ? const Color(0xff20dfbd)
+            : const Color(0xff253237),
+      ),
+      shape: const StadiumBorder(),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    ),
+  );
+
+  Widget _viewToggle(String label, IconData icon, bool selected) => Expanded(
+    child: InkWell(
+      borderRadius: BorderRadius.circular(11),
+      onTap: () => setState(() => mapView = label == 'Map'),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xff20dfbd) : Colors.transparent,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected
+                  ? const Color(0xff071512)
+                  : const Color(0xffadbdc0),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected
+                    ? const Color(0xff071512)
+                    : const Color(0xffadbdc0),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => Column(
     children: [
       if (!widget.mine)
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
           child: Column(
             children: [
               TextField(
                 controller: search,
                 onSubmitted: (_) => refresh(),
                 decoration: InputDecoration(
-                  hintText: 'Search resources',
-                  prefixIcon: const Icon(Icons.search),
+                  hintText: 'Search baby gear, food, furniture…',
+                  prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: IconButton(
+                    tooltip: 'Search',
                     onPressed: refresh,
-                    icon: const Icon(Icons.search),
+                    icon: const Icon(Icons.arrow_forward_rounded),
                   ),
                 ),
               ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 38,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _categoryChip('All', null),
+                    ...cats.map((x) => _categoryChip(pretty(x), x)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
-                  DropdownButton<String?>(
-                    value: category,
-                    hint: const Text('All categories'),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('All categories'),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff151d21),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xff253237)),
                       ),
-                      ...cats.map(
-                        (x) =>
-                            DropdownMenuItem(value: x, child: Text(pretty(x))),
+                      child: Row(
+                        children: [
+                          _viewToggle(
+                            'List',
+                            Icons.view_list_rounded,
+                            !mapView,
+                          ),
+                          _viewToggle('Map', Icons.map_outlined, mapView),
+                        ],
                       ),
-                    ],
-                    onChanged: (v) {
-                      category = v;
-                      refresh();
-                    },
+                    ),
                   ),
-                  IconButton(
-                    tooltip: mapView ? 'Show list' : 'Show map',
-                    onPressed: () => setState(() => mapView = !mapView),
-                    icon: Icon(mapView ? Icons.list_alt : Icons.map_outlined),
-                  ),
-                  TextButton.icon(
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
                     onPressed: nearbyLatitude == null
                         ? chooseNearby
                         : () {
@@ -959,11 +1096,9 @@ class _DonationListState extends State<DonationList> {
                     icon: Icon(
                       nearbyLatitude == null
                           ? Icons.near_me_outlined
-                          : Icons.clear,
+                          : Icons.close_rounded,
                     ),
-                    label: Text(
-                      nearbyLatitude == null ? 'Nearby' : 'Clear nearby',
-                    ),
+                    label: Text(nearbyLatitude == null ? 'Near me' : 'Clear'),
                   ),
                 ],
               ),
@@ -1078,12 +1213,12 @@ class _StatusPill extends StatelessWidget {
     final available = status == 'AVAILABLE';
     final reserved = status == 'RESERVED';
     final background = available
-        ? const Color(0xff203b31)
+        ? const Color(0xff123a34)
         : reserved
         ? const Color(0xff48351f)
         : const Color(0xff303936);
     final foreground = available
-        ? const Color(0xff82d6b4)
+        ? const Color(0xff20dfbd)
         : reserved
         ? const Color(0xfff0c47d)
         : const Color(0xffc0cbc4);
@@ -1105,6 +1240,28 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+Widget _requestStatusBadge(String status) {
+  final color = switch (status) {
+    'ACCEPTED' => const Color(0xff20dfbd),
+    'COMPLETED' => const Color(0xff7bd89c),
+    'PENDING' => const Color(0xffffc66d),
+    'REJECTED' || 'CANCELLED' => const Color(0xffff8794),
+    _ => const Color(0xffaebdc0),
+  };
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: color.withValues(alpha: .28)),
+    ),
+    child: Text(
+      pretty(status),
+      style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800),
+    ),
+  );
+}
+
 class DonationCard extends StatefulWidget {
   const DonationCard({
     super.key,
@@ -1121,6 +1278,7 @@ class DonationCard extends StatefulWidget {
 
 class _DonationCardState extends State<DonationCard> {
   bool favorite = false, savingFavorite = false;
+  int photoIndex = 0;
   Map<String, dynamic> get item => widget.item;
   @override
   void initState() {
@@ -1153,132 +1311,336 @@ class _DonationCardState extends State<DonationCard> {
   }
 
   @override
-  Widget build(BuildContext context) => Card(
-    margin: const EdgeInsets.only(bottom: 10),
-    child: Padding(
-      padding: const EdgeInsets.all(16),
+  Widget build(BuildContext context) {
+    final photos = (item['imageUrls'] as List? ?? [])
+        .whereType<String>()
+        .toList();
+    final baseUri = Uri.parse(Api.instance.dio.options.baseUrl);
+    final status = item['status']?.toString() ?? 'AVAILABLE';
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      margin: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.volunteer_activism,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  item['title'] ?? 'Donation',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              _StatusPill(status: item['status']?.toString() ?? 'AVAILABLE'),
-              if (Api.instance.role == 'RECIPIENT')
-                IconButton(
-                  tooltip: favorite ? 'Remove saved item' : 'Save item',
-                  onPressed: savingFavorite ? null : toggleFavorite,
-                  icon: Icon(
-                    favorite ? Icons.favorite : Icons.favorite_border,
-                    color: favorite ? Colors.red : null,
-                  ),
-                ),
-            ],
-          ),
-          ..._donationPhotoStrip(item),
-          Text(
-            '${pretty(item['category'] ?? '')} · ${item['availableQuantity'] ?? item['quantity'] ?? 1} ${item['status'] == 'AVAILABLE' ? 'available' : 'remaining'}',
-          ),
-          Text('${item['city'] ?? item['donorCity'] ?? 'Location not set'}'),
-          TextButton.icon(
-            onPressed: () => viewDonor(context),
-            icon: const Icon(Icons.person_outline),
-            label: Text('View ${item['donorName'] ?? 'donor'} profile'),
-          ),
-          if (widget.isOwner &&
-              (item['pickupAddress']?.toString().isNotEmpty ?? false))
-            Text('Pickup address: ${item['pickupAddress']}'),
-          Text(
-            item['description'] ?? '',
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (item['latitude'] != null && item['longitude'] != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => showDialog(
-                  context: context,
-                  builder: (_) => DonationMap(item: item),
-                ),
-                icon: const Icon(Icons.map_outlined),
-                label: const Text('Pickup map'),
-              ),
-            ),
-          if (widget.isOwner)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Wrap(
-                spacing: 4,
-                children: [
-                  if (item['status'] == 'AVAILABLE')
-                    TextButton.icon(
-                      onPressed: () => edit(context),
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Edit'),
+          SizedBox(
+            height: 188,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (photos.isNotEmpty)
+                  PageView.builder(
+                    itemCount: photos.length,
+                    onPageChanged: (index) =>
+                        setState(() => photoIndex = index),
+                    itemBuilder: (_, index) => Image.network(
+                      baseUri.resolve(photos[index]).toString(),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => _photoPlaceholder(),
                     ),
-                  if (item['status'] != 'PICKED_UP' &&
-                      item['status'] != 'CANCELLED')
-                    TextButton.icon(
-                      onPressed: () => delete(context),
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Delete'),
-                    ),
-                ],
-              ),
-            ),
-          if (!widget.isOwner && item['status'] == 'RESERVED')
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.lock_clock_outlined,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.secondary,
-                  ),
-                  const SizedBox(width: 7),
-                  Text(
-                    'Pickup is being arranged',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.secondary,
-                      fontWeight: FontWeight.w600,
+                  )
+                else
+                  _photoPlaceholder(),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black26,
+                        Colors.transparent,
+                        Colors.black54,
+                      ],
+                      stops: [0, .48, 1],
                     ),
                   ),
-                ],
-              ),
-            ),
-          if (!widget.isOwner &&
-              Api.instance.role == 'RECIPIENT' &&
-              item['status'] == 'AVAILABLE')
-            Align(
-              alignment: Alignment.centerRight,
-              child: Wrap(
-                spacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => contactDonor(context),
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    label: const Text('Message donor'),
+                ),
+                Positioned(
+                  left: 14,
+                  top: 14,
+                  child: _StatusPill(status: status),
+                ),
+                if (photos.length > 1)
+                  Positioned(
+                    right: 62,
+                    top: 17,
+                    child: _imageCountPill(photoIndex + 1, photos.length),
                   ),
-                  FilledButton.tonal(
-                    onPressed: () => request(context),
-                    child: const Text('Request item'),
+                if (Api.instance.role == 'RECIPIENT')
+                  Positioned(
+                    right: 10,
+                    top: 8,
+                    child: Material(
+                      color: const Color(0xcc101719),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: favorite ? 'Remove saved item' : 'Save item',
+                        onPressed: savingFavorite ? null : toggleFavorite,
+                        icon: Icon(
+                          favorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: favorite
+                              ? const Color(0xffff7c91)
+                              : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (photos.length > 1)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 9,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        photos.length.clamp(0, 6),
+                        (i) => Container(
+                          width: i == photoIndex ? 18 : 5,
+                          height: 5,
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          decoration: BoxDecoration(
+                            color: i == photoIndex
+                                ? const Color(0xff20dfbd)
+                                : Colors.white70,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item['title'] ?? 'Donation',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                    if (widget.isOwner)
+                      PopupMenuButton<String>(
+                        tooltip: 'Listing options',
+                        onSelected: (choice) =>
+                            choice == 'edit' ? edit(context) : delete(context),
+                        itemBuilder: (_) => [
+                          if (status == 'AVAILABLE')
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Text('Edit listing'),
+                            ),
+                          if (status != 'PICKED_UP' && status != 'CANCELLED')
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete listing'),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 9),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    _detailPill(
+                      Icons.category_outlined,
+                      pretty(item['category'] ?? 'Item'),
+                    ),
+                    _detailPill(
+                      Icons.inventory_2_outlined,
+                      '${item['availableQuantity'] ?? item['quantity'] ?? 1} available',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 11),
+                Text(
+                  item['description'] ?? '',
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: const Color(0xffaebdc0), height: 1.35),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => viewDonor(context),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: const Color(0xff173b36),
+                        child: Text(
+                          (item['donorName']?.toString().isNotEmpty ?? false)
+                              ? item['donorName']
+                                    .toString()
+                                    .substring(0, 1)
+                                    .toUpperCase()
+                              : 'S',
+                          style: const TextStyle(
+                            color: Color(0xff20dfbd),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['donorName'] ?? 'Community donor',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              item['city'] ??
+                                  item['donorCity'] ??
+                                  item['pickupAddress'] ??
+                                  'Location not set',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xff91a2a5),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (item['latitude'] != null && item['longitude'] != null)
+                        IconButton(
+                          tooltip: 'View pickup map',
+                          onPressed: () => showDialog(
+                            context: context,
+                            builder: (_) => DonationMap(item: item),
+                          ),
+                          icon: const Icon(
+                            Icons.location_on_outlined,
+                            color: Color(0xff20dfbd),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (widget.isOwner &&
+                    (item['pickupAddress']?.toString().isNotEmpty ??
+                        false)) ...[
+                  const SizedBox(height: 8),
+                  _detailPill(
+                    Icons.place_outlined,
+                    item['pickupAddress'].toString(),
                   ),
                 ],
-              ),
+                if (!widget.isOwner && status == 'RESERVED')
+                  const Padding(
+                    padding: EdgeInsets.only(top: 10),
+                    child: Text(
+                      'Pickup is being arranged',
+                      style: TextStyle(
+                        color: Color(0xffffc66d),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                if (!widget.isOwner &&
+                    Api.instance.role == 'RECIPIENT' &&
+                    status == 'AVAILABLE') ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => contactDonor(context),
+                          icon: const Icon(Icons.chat_bubble_outline_rounded),
+                          label: const Text('Message'),
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton.icon(
+                          onPressed: () => request(context),
+                          icon: const Icon(Icons.volunteer_activism_rounded),
+                          label: const Text('Request item'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
             ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _photoPlaceholder() => Container(
+    color: const Color(0xff1a292d),
+    alignment: Alignment.center,
+    child: const Icon(
+      Icons.volunteer_activism_rounded,
+      size: 42,
+      color: Color(0xff20dfbd),
+    ),
+  );
+
+  Widget _detailPill(IconData icon, String text) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: const Color(0xff202b2f),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: const Color(0xff20dfbd)),
+        const SizedBox(width: 5),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 190),
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xffd3dfdf),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _imageCountPill(int current, int count) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    decoration: BoxDecoration(
+      color: const Color(0xcc101719),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      '$current/$count',
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: Colors.white,
       ),
     ),
   );
@@ -2520,7 +2882,7 @@ class _ChatPageState extends State<ChatPage> {
                   height: 132,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xff82d6b4).withValues(alpha: .16),
+                    color: const Color(0xff20dfbd).withValues(alpha: .16),
                     border: Border.all(color: Colors.white24, width: 2),
                   ),
                   child: Center(
@@ -2808,7 +3170,7 @@ class _ChatPageState extends State<ChatPage> {
                   final mine =
                       (m['senderId'] as num?)?.toInt() == Api.instance.userId;
                   final bubbleColor = mine
-                      ? const Color(0xff176b55)
+                      ? const Color(0xff138f7a)
                       : const Color(0xff26332f);
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 3),
@@ -3327,7 +3689,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                       height: 48,
                       child: const Icon(
                         Icons.location_pin,
-                        color: Color(0xff176b55),
+                        color: Color(0xff138f7a),
                         size: 44,
                       ),
                     ),
@@ -3400,7 +3762,7 @@ class DonationBrowseMap extends StatelessWidget {
                     '${item['title'] ?? 'Resource'} · ${item['city'] ?? ''}',
                 child: const Icon(
                   Icons.location_pin,
-                  color: Color(0xff176b55),
+                  color: Color(0xff138f7a),
                   size: 42,
                 ),
               ),
@@ -3441,7 +3803,7 @@ class DonationMap extends StatelessWidget {
                         height: 48,
                         child: const Icon(
                           Icons.location_pin,
-                          color: Color(0xff176b55),
+                          color: Color(0xff138f7a),
                           size: 44,
                         ),
                       ),
@@ -3565,61 +3927,154 @@ class _RequestListState extends State<RequestList> {
               final r = Map<String, dynamic>.from(x);
               final status = r['status'];
               return Card(
-                child: ListTile(
-                  title: Text(r['donationTitle'] ?? 'Donation'),
-                  subtitle: Text(
-                    '${r['recipientName'] ?? r['donorName']} · ${pretty(status)}',
-                  ),
-                  trailing: status == 'PENDING' && widget.incoming
-                      ? Wrap(
-                          children: [
-                            IconButton(
-                              onPressed: busyRequests.contains(r['id'])
-                                  ? null
-                                  : () => decide(r['id'], 'REJECTED'),
-                              icon: const Icon(Icons.close),
+                child: Padding(
+                  padding: const EdgeInsets.all(15),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: const Color(0xff123a34),
+                              borderRadius: BorderRadius.circular(15),
                             ),
-                            IconButton(
-                              onPressed: busyRequests.contains(r['id'])
-                                  ? null
-                                  : () => decide(r['id'], 'ACCEPTED'),
-                              icon: const Icon(Icons.check),
+                            child: const Icon(
+                              Icons.volunteer_activism_rounded,
+                              color: Color(0xff20dfbd),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  r['donationTitle'] ?? 'Donation',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${widget.incoming ? (r['recipientName'] ?? 'Recipient') : (r['donorName'] ?? 'Donor')} · ${r['quantity'] ?? 1} item(s)',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xff9eafb2),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          _requestStatusBadge(status?.toString() ?? 'PENDING'),
+                        ],
+                      ),
+                      if (status == 'ACCEPTED' &&
+                          (r['pickupAddress']?.toString().isNotEmpty ??
+                              false)) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: const Color(0xff202b2f),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.location_on_outlined,
+                                color: Color(0xff20dfbd),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  r['pickupAddress'].toString(),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xffd3dfdf),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      if (status == 'PENDING' && widget.incoming)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: busyRequests.contains(r['id'])
+                                    ? null
+                                    : () => decide(r['id'], 'REJECTED'),
+                                icon: const Icon(Icons.close_rounded),
+                                label: const Text('Decline'),
+                              ),
+                            ),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: busyRequests.contains(r['id'])
+                                    ? null
+                                    : () => decide(r['id'], 'ACCEPTED'),
+                                icon: const Icon(Icons.check_rounded),
+                                label: const Text('Accept request'),
+                              ),
                             ),
                           ],
                         )
-                      : status == 'ACCEPTED' || status == 'COMPLETED'
-                      ? Wrap(
+                      else
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
                           children: [
-                            IconButton(
-                              tooltip: 'Chat',
-                              onPressed: () => openChat(context, r['id']),
-                              icon: const Icon(Icons.chat_bubble_outline),
-                            ),
+                            if (status == 'ACCEPTED' || status == 'COMPLETED')
+                              OutlinedButton.icon(
+                                onPressed: () => openChat(context, r['id']),
+                                icon: const Icon(
+                                  Icons.chat_bubble_outline_rounded,
+                                ),
+                                label: const Text('Message'),
+                              ),
                             if (widget.incoming && status == 'ACCEPTED')
-                              IconButton(
-                                tooltip: 'Mark picked up',
+                              FilledButton.icon(
                                 onPressed: () => complete(r['id']),
-                                icon: const Icon(Icons.done_all),
+                                icon: const Icon(Icons.done_all_rounded),
+                                label: const Text('Mark picked up'),
                               ),
                             if (!widget.incoming &&
                                 status == 'COMPLETED' &&
                                 !ratedRequests.contains(r['id']))
-                              IconButton(
-                                tooltip: 'Rate donor',
+                              OutlinedButton.icon(
                                 onPressed: () => rate(context, r['id']),
-                                icon: const Icon(Icons.star_outline),
+                                icon: const Icon(Icons.star_outline_rounded),
+                                label: const Text('Rate donor'),
+                              ),
+                            if (status == 'PENDING' && !widget.incoming)
+                              TextButton.icon(
+                                onPressed: busyRequests.contains(r['id'])
+                                    ? null
+                                    : () => cancel(r['id']),
+                                icon: const Icon(Icons.cancel_outlined),
+                                label: const Text('Cancel request'),
                               ),
                           ],
-                        )
-                      : status == 'PENDING' && !widget.incoming
-                      ? IconButton(
-                          tooltip: 'Cancel request',
-                          onPressed: busyRequests.contains(r['id'])
-                              ? null
-                              : () => cancel(r['id']),
-                          icon: const Icon(Icons.cancel_outlined),
-                        )
-                      : null,
+                        ),
+                    ],
+                  ),
                 ),
               );
             }),
@@ -4191,7 +4646,10 @@ class _ProfilePageState extends State<ProfilePage> {
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.headlineSmall,
       ),
-      Text(user['username'] ?? user['email'] ?? '', textAlign: TextAlign.center),
+      Text(
+        user['username'] ?? user['email'] ?? '',
+        textAlign: TextAlign.center,
+      ),
       Text(
         '${user['role']} · ${user['city'] ?? 'City not set'}',
         textAlign: TextAlign.center,
@@ -4945,7 +5403,9 @@ class _UsersPageState extends State<UsersPage> {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            user['username']?.toString() ?? user['email']?.toString() ?? '',
+                            user['username']?.toString() ??
+                                user['email']?.toString() ??
+                                '',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: Theme.of(context)
@@ -5171,7 +5631,7 @@ class _AdminDonationsPageState extends State<AdminDonationsPage> {
                           width: 42,
                           height: 42,
                           decoration: BoxDecoration(
-                            color: const Color(0xff203b31),
+                            color: const Color(0xff123a34),
                             borderRadius: BorderRadius.circular(13),
                           ),
                           child: Icon(
