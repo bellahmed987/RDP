@@ -1201,6 +1201,7 @@ class DonationList extends StatefulWidget {
 
 class _DonationListState extends State<DonationList> {
   final search = TextEditingController();
+  Timer? searchDebounce;
   String? category;
   double? nearbyLatitude, nearbyLongitude;
   double nearbyRadius = 5;
@@ -1248,6 +1249,18 @@ class _DonationListState extends State<DonationList> {
   void refresh() {
     if (!mounted) return;
     setState(() => future = load());
+  }
+
+  void searchChanged(String _) {
+    searchDebounce?.cancel();
+    searchDebounce = Timer(const Duration(milliseconds: 420), refresh);
+  }
+
+  @override
+  void dispose() {
+    searchDebounce?.cancel();
+    search.dispose();
+    super.dispose();
   }
 
   Future<void> chooseNearby() async {
@@ -1438,14 +1451,18 @@ class _DonationListState extends State<DonationList> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'A little good, close by.',
+                nearbyLatitude == null
+                    ? 'Find a little good nearby.'
+                    : 'Good things near your pin.',
                 style: Theme.of(context).textTheme.headlineSmall
                     ?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -.4),
               ),
               const SizedBox(height: 3),
-              const Text(
-                'Find useful things shared by people near you.',
-                style: TextStyle(color: Color(0xff9eafb2)),
+              Text(
+                nearbyLatitude == null
+                    ? 'Explore useful things shared by your community.'
+                    : 'Showing items within ${nearbyRadius.toStringAsFixed(0)} km of your selected area.',
+                style: const TextStyle(color: Color(0xff9eafb2)),
               ),
               const SizedBox(height: 14),
               Row(
@@ -1481,6 +1498,7 @@ class _DonationListState extends State<DonationList> {
             children: [
               TextField(
                 controller: search,
+                onChanged: searchChanged,
                 onSubmitted: (_) => refresh(),
                 decoration: InputDecoration(
                   hintText: 'Search baby gear, food, furniture…',
@@ -1565,6 +1583,21 @@ class _DonationListState extends State<DonationList> {
                           !widget.mine ||
                           (x is Map && x['status'] != 'CANCELLED'),
                     )
+                    .where((x) {
+                      if (widget.mine ||
+                          nearbyLatitude == null ||
+                          search.text.trim().isEmpty ||
+                          x is! Map)
+                        return true;
+                      final query = search.text.trim().toLowerCase();
+                      final searchable = [
+                        x['title'],
+                        x['description'],
+                        x['category'],
+                        x['city'],
+                      ].whereType<Object>().join(' ').toLowerCase();
+                      return searchable.contains(query);
+                    })
                     .toList();
             if (items.isEmpty) {
               return EmptyPane(
@@ -1576,8 +1609,25 @@ class _DonationListState extends State<DonationList> {
             }
             if (mapView) {
               if (!MapTilerMap.enabled) {
-                return const Center(
-                  child: Text('MapTiler key is not configured.'),
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.map_outlined,
+                        size: 36,
+                        color: Color(0xff20dfbd),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text('Map view needs its map key.'),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () => setState(() => mapView = false),
+                        icon: const Icon(Icons.view_list_rounded),
+                        label: const Text('Back to list'),
+                      ),
+                    ],
+                  ),
                 );
               }
               final points = items
@@ -1589,12 +1639,30 @@ class _DonationListState extends State<DonationList> {
                   )
                   .toList();
               if (points.isEmpty) {
-                return const Center(
-                  child: Text('No listings have map locations yet.'),
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.location_off_outlined,
+                        size: 36,
+                        color: Color(0xff20dfbd),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text('No listings with a pickup pin yet.'),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () => setState(() => mapView = false),
+                        icon: const Icon(Icons.view_list_rounded),
+                        label: const Text('Back to list'),
+                      ),
+                    ],
+                  ),
                 );
               }
               return DonationBrowseMap(
                 items: points.cast<Map<String, dynamic>>(),
+                onShowList: () => setState(() => mapView = false),
               );
             }
             return RefreshIndicator(
@@ -4173,8 +4241,9 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 }
 
 class DonationBrowseMap extends StatelessWidget {
-  const DonationBrowseMap({super.key, required this.items});
+  const DonationBrowseMap({super.key, required this.items, this.onShowList});
   final List<Map<String, dynamic>> items;
+  final VoidCallback? onShowList;
   @override
   Widget build(BuildContext context) {
     final points = items
@@ -4185,41 +4254,113 @@ class DonationBrowseMap extends StatelessWidget {
           ),
         )
         .toList();
-    return fmap.FlutterMap(
-      options: fmap.MapOptions(
-        initialCenter: points.first,
-        initialZoom: 11,
-        initialCameraFit: points.length > 1
-            ? fmap.CameraFit.coordinates(
-                coordinates: points,
-                padding: const EdgeInsets.all(48),
-                maxZoom: 12,
-              )
-            : null,
-      ),
+    return Stack(
       children: [
-        MapTilerMap.tileLayer,
-        fmap.MarkerLayer(
-          markers: List.generate(items.length, (index) {
-            final item = items[index];
-            return fmap.Marker(
-              point: points[index],
-              width: 42,
-              height: 48,
-              child: Tooltip(
-                message:
-                    '${item['title'] ?? 'Resource'} · ${item['city'] ?? ''}',
-                child: const Icon(
-                  Icons.location_pin,
-                  color: Color(0xff138f7a),
-                  size: 42,
-                ),
-              ),
-            );
-          }),
+        fmap.FlutterMap(
+          options: fmap.MapOptions(
+            initialCenter: points.first,
+            initialZoom: 11,
+            initialCameraFit: points.length > 1
+                ? fmap.CameraFit.coordinates(
+                    coordinates: points,
+                    padding: const EdgeInsets.all(64),
+                    maxZoom: 12,
+                  )
+                : null,
+          ),
+          children: [
+            MapTilerMap.tileLayer,
+            fmap.MarkerLayer(
+              markers: List.generate(items.length, (index) {
+                final item = items[index];
+                return fmap.Marker(
+                  point: points[index],
+                  width: 48,
+                  height: 52,
+                  child: Tooltip(
+                    message:
+                        '${item['title'] ?? 'Resource'} · ${item['city'] ?? ''}',
+                    child: Material(
+                      color: const Color(0xff20dfbd),
+                      elevation: 5,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => _showItem(context, item),
+                        child: const Icon(
+                          Icons.volunteer_activism_rounded,
+                          color: Color(0xff071512),
+                          size: 23,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            MapTilerMap.attribution,
+          ],
         ),
-        MapTilerMap.attribution,
+        Positioned(
+          top: 14,
+          left: 14,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            decoration: BoxDecoration(
+              color: const Color(0xee11191d),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xff344548)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.place_rounded,
+                  size: 16,
+                  color: Color(0xff20dfbd),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${items.length} nearby ${items.length == 1 ? 'item' : 'items'}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (onShowList != null)
+          Positioned(
+            right: 16,
+            bottom: 22,
+            child: FilledButton.icon(
+              onPressed: onShowList,
+              icon: const Icon(Icons.view_list_rounded),
+              label: const Text('Show list'),
+              style: FilledButton.styleFrom(elevation: 7),
+            ),
+          ),
       ],
+    );
+  }
+
+  void _showItem(BuildContext context, Map<String, dynamic> item) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: const Color(0xff0c1114),
+      builder: (context) => SafeArea(
+        child: FractionallySizedBox(
+          heightFactor: .82,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 20),
+            child: DonationCard(item: item),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4845,11 +4986,12 @@ class _RequestListState extends State<RequestList> {
   }
 }
 
-Widget _conversationAvatar(String? path, String? name) {
+Widget _conversationAvatar(String? path, String? name, {double radius = 20}) {
   final url = path == null || path.isEmpty
       ? null
       : Uri.parse(Api.instance.dio.options.baseUrl).resolve(path).toString();
   return CircleAvatar(
+    radius: radius,
     backgroundImage: url == null ? null : NetworkImage(url),
     child: url == null
         ? Text(name != null && name.isNotEmpty ? name[0].toUpperCase() : '?')
@@ -4866,6 +5008,8 @@ class ConversationsPage extends StatefulWidget {
 class _ConversationsPageState extends State<ConversationsPage> {
   late Future<dynamic> future;
   Timer? refreshTimer;
+  final search = TextEditingController();
+  bool unreadOnly = false;
 
   @override
   void initState() {
@@ -4877,11 +5021,15 @@ class _ConversationsPageState extends State<ConversationsPage> {
   Future<dynamic> load() async =>
       (await Api.instance.dio.get('/conversations')).data;
 
-  void refresh() => setState(() => future = load());
+  void refresh() {
+    if (!mounted) return;
+    setState(() => future = load());
+  }
 
   @override
   void dispose() {
     refreshTimer?.cancel();
+    search.dispose();
     super.dispose();
   }
 
@@ -4889,106 +5037,412 @@ class _ConversationsPageState extends State<ConversationsPage> {
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
     future: future,
     builder: (context, snapshot) {
-      if (snapshot.hasError) return ErrorPane(onRetry: refresh);
-      if (!snapshot.hasData) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      final conversations = snapshot.data as List;
-      if (conversations.isEmpty) {
-        return const EmptyPane(
-          title: 'No messages yet',
-          subtitle: 'Message a donor from a listing to start a conversation.',
+      final allConversations = snapshot.data is List
+          ? (snapshot.data as List)
+                .map((raw) => Map<String, dynamic>.from(raw as Map))
+                .toList()
+          : <Map<String, dynamic>>[];
+      allConversations.sort((a, b) {
+        final aDate = DateTime.tryParse(
+          (a['lastMessageAt'] ?? a['createdAt'])?.toString() ?? '',
         );
-      }
-      return RefreshIndicator(
-        onRefresh: () async => refresh(),
-        child: ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: conversations.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 6),
-          itemBuilder: (context, index) {
-            final conversation = Map<String, dynamic>.from(
-              conversations[index],
-            );
-            final unread = (conversation['unreadCount'] as num?)?.toInt() ?? 0;
-            final lastMessage = conversation['lastMessage']?.toString();
-            return Card(
-              child: ListTile(
-                leading: _conversationAvatar(
-                  conversation['otherUserProfileImageUrl']?.toString(),
-                  conversation['otherUserName']?.toString(),
-                ),
-                title: Text(
-                  conversation['otherUserName']?.toString() ?? 'Conversation',
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+        final bDate = DateTime.tryParse(
+          (b['lastMessageAt'] ?? b['createdAt'])?.toString() ?? '',
+        );
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        return bDate.compareTo(aDate);
+      });
+      final unreadTotal = allConversations.fold<int>(
+        0,
+        (sum, row) => sum + ((row['unreadCount'] as num?)?.toInt() ?? 0),
+      );
+      final unreadThreads = allConversations
+          .where((row) => (row['unreadCount'] as num?)?.toInt() != 0)
+          .length;
+      final query = search.text.trim().toLowerCase();
+      final conversations = allConversations.where((row) {
+        if (unreadOnly && (row['unreadCount'] as num?)?.toInt() == 0) {
+          return false;
+        }
+        if (query.isEmpty) return true;
+        final content = [
+          row['otherUserName'],
+          row['donationTitle'],
+          row['lastMessage'],
+        ].whereType<Object>().join(' ').toLowerCase();
+        return content.contains(query);
+      }).toList();
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      conversation['donationTitle']?.toString() ?? 'Listing',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      lastMessage?.isNotEmpty == true
-                          ? lastMessage!
-                          : 'Start a conversation',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: unread > 0 ? FontWeight.w600 : null,
-                        color: unread > 0
-                            ? Theme.of(context).colorScheme.primary
-                            : null,
-                      ),
-                    ),
-                  ],
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (unread > 0)
-                      Container(
-                        constraints: const BoxConstraints(minWidth: 22),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          unread > 99 ? '99+' : '$unread',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onPrimary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Your conversations',
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -.4,
+                                ),
                           ),
-                        ),
+                          const SizedBox(height: 3),
+                          const Text(
+                            'Keep the good things moving.',
+                            style: TextStyle(color: Color(0xff9eafb2)),
+                          ),
+                        ],
                       ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.chevron_right),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 11,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff153a36),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.mark_chat_unread_rounded,
+                            size: 15,
+                            color: Color(0xff20dfbd),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '$unreadTotal unread',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xff20dfbd),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                onTap: () async {
-                  await Navigator.push<void>(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatPage(conversation: conversation),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: search,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Search people, listings, messages',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            onPressed: () {
+                              search.clear();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _inboxFilter(
+                      'All messages',
+                      false,
+                      allConversations.length,
                     ),
-                  );
-                  if (mounted) refresh();
-                },
-              ),
-            );
-          },
-        ),
+                    const SizedBox(width: 8),
+                    _inboxFilter('Unread', true, unreadThreads),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: snapshot.hasError
+                ? ErrorPane(onRetry: refresh)
+                : !snapshot.hasData
+                ? const Center(child: CircularProgressIndicator())
+                : conversations.isEmpty
+                ? EmptyPane(
+                    title: allConversations.isEmpty
+                        ? 'No messages yet'
+                        : 'No conversations match',
+                    subtitle: allConversations.isEmpty
+                        ? 'Open a listing and message its donor to start a conversation.'
+                        : 'Try another search or switch back to all messages.',
+                  )
+                : RefreshIndicator(
+                    onRefresh: () async => refresh(),
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+                      itemCount: conversations.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final conversation = conversations[index];
+                        final unread =
+                            (conversation['unreadCount'] as num?)?.toInt() ?? 0;
+                        final lastMessage = conversation['lastMessage']
+                            ?.toString();
+                        final kind = conversation['lastMessageKind']
+                            ?.toString();
+                        final preview = kind == 'VOICE'
+                            ? 'Voice message'
+                            : kind == 'LOCATION'
+                            ? 'Shared a location'
+                            : lastMessage?.isNotEmpty == true
+                            ? lastMessage!
+                            : 'Start a conversation';
+                        return Card(
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () async {
+                              await Navigator.push<void>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      ChatPage(conversation: conversation),
+                                ),
+                              );
+                              if (mounted) refresh();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                children: [
+                                  Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      _conversationAvatar(
+                                        conversation['otherUserProfileImageUrl']
+                                            ?.toString(),
+                                        conversation['otherUserName']
+                                            ?.toString(),
+                                        radius: 25,
+                                      ),
+                                      if (unread > 0)
+                                        Positioned(
+                                          right: -1,
+                                          bottom: 0,
+                                          child: Container(
+                                            width: 13,
+                                            height: 13,
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xff20dfbd),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: const Color(0xff151d21),
+                                                width: 2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 13),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                conversation['otherUserName']
+                                                        ?.toString() ??
+                                                    'Conversation',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: unread > 0
+                                                      ? FontWeight.w900
+                                                      : FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _inboxTimestamp(
+                                                conversation['lastMessageAt'] ??
+                                                    conversation['createdAt'],
+                                              ),
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: unread > 0
+                                                    ? const Color(0xff20dfbd)
+                                                    : const Color(0xff819295),
+                                                fontWeight: unread > 0
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.volunteer_activism_outlined,
+                                              size: 13,
+                                              color: Color(0xff20dfbd),
+                                            ),
+                                            const SizedBox(width: 5),
+                                            Expanded(
+                                              child: Text(
+                                                conversation['donationTitle']
+                                                        ?.toString() ??
+                                                    'Community chat',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Color(0xff9eafb2),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 7),
+                                        Row(
+                                          children: [
+                                            if (kind == 'VOICE' ||
+                                                kind == 'LOCATION') ...[
+                                              Icon(
+                                                kind == 'VOICE'
+                                                    ? Icons.mic_none_rounded
+                                                    : Icons
+                                                          .location_on_outlined,
+                                                size: 14,
+                                                color: unread > 0
+                                                    ? const Color(0xff20dfbd)
+                                                    : const Color(0xff91a2a5),
+                                              ),
+                                              const SizedBox(width: 5),
+                                            ],
+                                            Expanded(
+                                              child: Text(
+                                                preview,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: unread > 0
+                                                      ? const Color(0xffe1ecea)
+                                                      : const Color(0xffa3b0b3),
+                                                  fontWeight: unread > 0
+                                                      ? FontWeight.w700
+                                                      : FontWeight.w400,
+                                                ),
+                                              ),
+                                            ),
+                                            if (unread > 0)
+                                              Container(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      minWidth: 22,
+                                                    ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 3,
+                                                    ),
+                                                decoration: const BoxDecoration(
+                                                  color: Color(0xff20dfbd),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: Text(
+                                                  unread > 99
+                                                      ? '99+'
+                                                      : '$unread',
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    color: Color(0xff071512),
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Icon(
+                                    Icons.chevron_right_rounded,
+                                    color: Color(0xff829497),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+          ),
+        ],
       );
     },
   );
+
+  Widget _inboxFilter(String label, bool unread, int count) {
+    final selected = unreadOnly == unread;
+    return ChoiceChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          const SizedBox(width: 6),
+          Text(
+            '$count',
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+      selected: selected,
+      showCheckmark: false,
+      onSelected: (_) => setState(() => unreadOnly = unread),
+      selectedColor: const Color(0xff20dfbd),
+      backgroundColor: const Color(0xff151d21),
+      side: BorderSide(
+        color: selected ? const Color(0xff20dfbd) : const Color(0xff29383c),
+      ),
+      labelStyle: TextStyle(
+        color: selected ? const Color(0xff071512) : const Color(0xffbdc9ca),
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+
+  String _inboxTimestamp(dynamic raw) {
+    final value = DateTime.tryParse(raw?.toString() ?? '');
+    if (value == null) return '';
+    final now = DateTime.now();
+    final local = value.toLocal();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(local.year, local.month, local.day);
+    if (day == today) {
+      final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+      return '$hour:${local.minute.toString().padLeft(2, '0')} ${local.hour >= 12 ? 'PM' : 'AM'}';
+    }
+    if (today.difference(day).inDays == 1) return 'Yesterday';
+    return '${local.day}/${local.month}/${local.year}';
+  }
 }
 
 class DonorProfilePage extends StatefulWidget {

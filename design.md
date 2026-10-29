@@ -53,6 +53,7 @@ For recipient accounts, keep four primary bottom destinations: Explore, Requests
 ### Recipients
 
 - **Explore:** Search and filter listings, switch between list and map, and make distance/location information easy to scan.
+- Make the map interactive: tapping a listing marker opens its photo, donor, pickup, and request actions. Keep an obvious route back to list view.
 - **Listing details:** Show item photos, description, donor profile, pickup location, availability, and actions to message or request.
 - **My Requests:** Provide clear Pending, Accepted, Ongoing, Completed, and Cancelled views with the next available action for each request.
 - **Favorites:** Keep saved items easy to revisit.
@@ -74,6 +75,7 @@ For recipient accounts, keep four primary bottom destinations: Explore, Requests
 
 - Render messages as separate left/right bubbles with readable timestamps and clear sender ownership.
 - Keep the latest conversation at the top of the inbox and show a useful last-message preview and unread indicator.
+- Give the inbox search and an unread-only filter. Show the listing context and a compact timestamp in each conversation preview.
 - Place call and conversation actions in a consistent header menu. Voice message recording must clearly show recording, send, cancel, and playback states.
 - For calls, use a focused full-screen or prominent call view with caller identity, connection/ringing state, mute, speaker, and end-call controls. Make the end-call action unmistakable.
 - Show shared locations as tappable map previews with a text fallback.
