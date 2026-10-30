@@ -1,0 +1,15 @@
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$env:ANDROID_HOME = 'C:\Android\Sdk'
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+$env:Path = "C:\src\flutter\bin;C:\Android\Sdk\platform-tools;$env:Path"
+$buildArgs = @()
+$mapConfig = Join-Path $root 'mobile\maptiler.env.json'
+if (Test-Path $mapConfig) {
+    $buildArgs += '--dart-define-from-file=maptiler.env.json'
+}
+Push-Location (Join-Path $root 'mobile')
+try {
+    flutter build apk --release @buildArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Android release APK build failed.' }
+} finally { Pop-Location }

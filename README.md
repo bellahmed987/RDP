@@ -9,6 +9,10 @@ An Android-first community platform for sharing surplus resources. Donors can pu
 3. In another PowerShell window, run .\scripts\start-mobile.ps1.
 4. Open http://localhost:8080/swagger-ui.html for the API.
 
+## Android device connection
+
+The mobile app defaults to `http://192.168.100.3:8080/api` for a phone connected to the same Wi-Fi as this development computer. Keep the backend running and install the generated release APK on that phone. For the Android emulator, build with `--dart-define=API_BASE_URL=http://10.0.2.2:8080/api` instead.
+
 The local administrator and demo credentials are written to the ignored README.local.md. Change them before sharing this project. Normal registration can create donors and recipients only.
 
 ## Project folders

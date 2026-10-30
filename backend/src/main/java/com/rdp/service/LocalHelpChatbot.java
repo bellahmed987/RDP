@@ -17,11 +17,11 @@ public class LocalHelpChatbot implements ChatbotProvider {
         if (q.contains("pickup") || q.contains("deliver") || q.contains("delivery"))
             return "RDP does not arrange delivery. After a donor accepts a request, the donor and recipient agree on a safe pickup time and place themselves.";
         if (q.contains("rating") || q.contains("review"))
-            return "After the donor marks an accepted request as completed, the recipient can leave one rating from 1 to 5 and an optional review.";
+            return "After a pickup is marked completed, both the donor and recipient can leave one 1-to-5-star review for each other. Reviews appear on each person's profile.";
         if (q.contains("favorite") || q.contains("save"))
             return "Tap the bookmark on an available donation to save it. Open Favorites later to find it again.";
         if (q.contains("map") || q.contains("near"))
-            return "Allow location access to find nearby donations. You can also search by city. The app can open the pickup coordinates in your map app.";
+            return "Ask me what is available near you to see current listings in your profile city. You can update your city in Profile, or open Explore to search and filter listings.";
         return "I can help with donating, requesting an item, pickup arrangements, messages, favorites, maps, and ratings. What would you like to know?";
     }
 }

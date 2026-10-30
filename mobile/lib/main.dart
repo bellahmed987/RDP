@@ -29,8 +29,8 @@ const recoveryQuestions = [
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  await PushNotifications.initialize();
   runApp(const RdpApp());
+  unawaited(PushNotifications.initialize());
 }
 
 class PushNotifications {
@@ -248,10 +248,74 @@ class _GateState extends State<Gate> {
 
   @override
   Widget build(BuildContext context) => loading
-      ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+      ? const _StartupScreen()
       : user == null
       ? AuthScreen(onSignedIn: signedIn)
       : Home(user: user!, onSignOut: signOut);
+}
+
+class _StartupScreen extends StatelessWidget {
+  const _StartupScreen();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xff123b34), Color(0xff0c1114), Color(0xff091012)],
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 92,
+              height: 92,
+              decoration: BoxDecoration(
+                color: const Color(0xff20dfbd).withValues(alpha: .14),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: const Color(0xff20dfbd).withValues(alpha: .45),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xff20dfbd).withValues(alpha: .13),
+                    blurRadius: 34,
+                    spreadRadius: 3,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.volunteer_activism_rounded,
+                color: Color(0xff20dfbd),
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 22),
+            const Text(
+              'ShareKind',
+              style: TextStyle(
+                color: Color(0xffedf5f0),
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .3,
+              ),
+            ),
+            const SizedBox(height: 7),
+            const Text(
+              'Sharing resources. Strengthening community.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xffaebdc0), fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _AuthGlow extends StatelessWidget {
@@ -1127,22 +1191,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           ),
           IconButton(
             tooltip: 'ShareKind help',
-            onPressed: () => showDialog(
-              context: context,
-              builder: (_) => const HelpDialog(),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChatbotPage()),
             ),
-            icon: const Icon(Icons.help_outline),
+            icon: const Icon(Icons.smart_toy_rounded),
           ),
-          if (donor && index == 0)
-            IconButton(
-              onPressed: () => showDialog(
-                context: context,
-                builder: (_) => DonationForm(
-                  onSaved: () => myDonationsKey.currentState?.refresh(),
-                ),
-              ),
-              icon: const Icon(Icons.add_circle_outline),
-            ),
           IconButton(
             onPressed: widget.onSignOut,
             icon: const Icon(Icons.logout),
@@ -7630,24 +7684,33 @@ class _NotificationsPageState extends State<NotificationsPage> {
   );
 }
 
-class HelpDialog extends StatefulWidget {
-  const HelpDialog({super.key});
+class ChatbotPage extends StatefulWidget {
+  const ChatbotPage({super.key});
   @override
-  State<HelpDialog> createState() => _HelpDialogState();
+  State<ChatbotPage> createState() => _ChatbotPageState();
 }
 
-class _HelpDialogState extends State<HelpDialog> {
+class _ChatbotPageState extends State<ChatbotPage> {
   final input = TextEditingController();
+  final scroll = ScrollController();
   final List<Map<String, String>> messages = [];
   bool busy = false;
-  Future<void> send() async {
-    final question = input.text.trim();
+  final suggestions = const [
+    'Show my requests',
+    'What is available near me?',
+    'How do I post an item?',
+    'How do reviews work?',
+  ];
+
+  Future<void> send([String? prompt]) async {
+    final question = (prompt ?? input.text).trim();
     if (question.isEmpty || busy) return;
     input.clear();
     setState(() {
-      messages.add({'text': question, 'who': 'You'});
+      messages.add({'text': question, 'who': 'user'});
       busy = true;
     });
+    _scrollToBottom();
     try {
       final response = await Api.instance.dio.post(
         '/chatbot',
@@ -7657,7 +7720,7 @@ class _HelpDialogState extends State<HelpDialog> {
         setState(
           () => messages.add({
             'text': response.data['answer']?.toString() ?? 'Please try again.',
-            'who': 'ShareKind help',
+            'who': 'bot',
           }),
         );
       }
@@ -7668,56 +7731,280 @@ class _HelpDialogState extends State<HelpDialog> {
             'text':
                 e.response?.data?['message']?.toString() ??
                 'The help service could not respond.',
-            'who': 'ShareKind help',
+            'who': 'bot',
           }),
         );
       }
     } finally {
       if (mounted) setState(() => busy = false);
+      _scrollToBottom();
     }
   }
 
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (scroll.hasClients) {
+        scroll.animateTo(
+          scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('ShareKind help'),
-    content: SizedBox(
-      width: 420,
-      height: 420,
-      child: Column(
+  void dispose() {
+    input.dispose();
+    scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Row(
         children: [
-          Expanded(
-            child: ListView(
-              children: messages
-                  .map(
-                    (m) => ListTile(
-                      title: Text(m['who']!),
-                      subtitle: Text(m['text']!),
-                    ),
-                  )
-                  .toList(),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xff20dfbd).withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(
+              Icons.smart_toy_rounded,
+              color: Color(0xff20dfbd),
             ),
           ),
-          TextField(
-            controller: input,
-            onSubmitted: (_) => send(),
-            decoration: InputDecoration(
-              hintText: 'Ask how the platform works',
-              suffixIcon: IconButton(
-                onPressed: busy ? null : send,
-                icon: const Icon(Icons.send),
+          const SizedBox(width: 10),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ShareKind assistant',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
-            ),
+              Text(
+                'Live help for your account',
+                style: TextStyle(fontSize: 11, color: Color(0xff9eafb2)),
+              ),
+            ],
           ),
-          if (busy) const LinearProgressIndicator(),
         ],
       ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Close'),
-      ),
-    ],
+    body: Column(
+      children: [
+        Expanded(
+          child: messages.isEmpty
+              ? ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xff153831), Color(0xff172329)],
+                        ),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: const Color(0xff28554c)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const CircleAvatar(
+                            radius: 27,
+                            backgroundColor: Color(0xff20dfbd),
+                            child: Icon(
+                              Icons.smart_toy_rounded,
+                              size: 30,
+                              color: Color(0xff0c1916),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            'How can I help?',
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 7),
+                          const Text(
+                            'Ask about your requests, available items, or how to use ShareKind.',
+                            style: TextStyle(
+                              color: Color(0xffb6c7c7),
+                              height: 1.45,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    const Text(
+                      'TRY ASKING',
+                      style: TextStyle(
+                        color: Color(0xff8fa4a5),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 9,
+                      runSpacing: 9,
+                      children: suggestions
+                          .map(
+                            (prompt) => ActionChip(
+                              avatar: const Icon(
+                                Icons.arrow_outward_rounded,
+                                size: 15,
+                              ),
+                              label: Text(prompt),
+                              onPressed: busy ? null : () => send(prompt),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  controller: scroll,
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 22),
+                  itemCount: messages.length + (busy ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (busy && index == messages.length) {
+                      return const Padding(
+                        padding: EdgeInsets.only(top: 8, left: 3),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.smart_toy_rounded,
+                              color: Color(0xff20dfbd),
+                              size: 19,
+                            ),
+                            SizedBox(width: 8),
+                            SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 9),
+                            Text(
+                              'Thinking…',
+                              style: TextStyle(color: Color(0xff9eafb2)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    final message = messages[index];
+                    final mine = message['who'] == 'user';
+                    return Align(
+                      alignment: mine
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width * .82,
+                        ),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 15,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: mine
+                              ? const Color(0xff138f7a)
+                              : const Color(0xff192327),
+                          border: mine
+                              ? null
+                              : Border.all(color: const Color(0xff29383c)),
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(19),
+                            topRight: const Radius.circular(19),
+                            bottomLeft: Radius.circular(mine ? 19 : 5),
+                            bottomRight: Radius.circular(mine ? 5 : 19),
+                          ),
+                        ),
+                        child: !mine
+                            ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 8, top: 1),
+                                    child: Icon(
+                                      Icons.smart_toy_rounded,
+                                      size: 18,
+                                      color: Color(0xff20dfbd),
+                                    ),
+                                  ),
+                                  Flexible(
+                                    child: Text(
+                                      message['text'] ?? '',
+                                      style: const TextStyle(height: 1.45),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text(
+                                message['text'] ?? '',
+                                style: const TextStyle(height: 1.4),
+                              ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: input,
+                    minLines: 1,
+                    maxLines: 4,
+                    onSubmitted: (_) => send(),
+                    decoration: InputDecoration(
+                      hintText: 'Ask about requests or listings…',
+                      filled: true,
+                      fillColor: const Color(0xff151d21),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 13,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: const BorderSide(color: Color(0xff29383c)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: const BorderSide(color: Color(0xff29383c)),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 9),
+                IconButton.filled(
+                  tooltip: 'Send message',
+                  onPressed: busy ? null : send,
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xff20dfbd),
+                    foregroundColor: const Color(0xff0a1714),
+                    fixedSize: const Size(50, 50),
+                  ),
+                  icon: const Icon(Icons.arrow_upward_rounded),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
   );
 }
 
