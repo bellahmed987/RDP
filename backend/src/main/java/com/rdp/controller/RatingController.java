@@ -14,11 +14,14 @@ import java.util.List;
 public class RatingController {
     private final RatingService ratings;
     public RatingController(RatingService ratings) { this.ratings = ratings; }
-    @PostMapping("/requests/{requestId}/rating") @PreAuthorize("hasRole('RECIPIENT')")
+    @PostMapping("/requests/{requestId}/rating")
     public ResponseEntity<RatingView> create(Authentication auth, @PathVariable Long requestId, @Valid @RequestBody RatingInput input) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ratings.create(auth.getName(), requestId, input));
     }
     @GetMapping("/donors/{donorId}/ratings") public List<RatingView> donorRatings(@PathVariable Long donorId) {
         return ratings.forDonor(donorId);
+    }
+    @GetMapping("/profiles/{userId}/ratings") public List<RatingView> profileRatings(@PathVariable Long userId) {
+        return ratings.forProfile(userId);
     }
 }

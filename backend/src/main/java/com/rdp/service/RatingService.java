@@ -20,18 +20,27 @@ public class RatingService {
     }
     @Transactional
     public RatingView create(String email, Long requestId, RatingInput input) {
-        AppUser recipient = current.require(email);
-        if (recipient.getRole() != Role.RECIPIENT) throw ApiException.forbidden("Only recipients can leave ratings.");
+        AppUser reviewer = current.require(email);
         DonationRequest request = requests.findById(requestId).orElseThrow(() -> ApiException.notFound("Request not found."));
-        if (!request.getRecipient().getId().equals(recipient.getId())) throw ApiException.forbidden("This request belongs to another recipient.");
-        if (request.getStatus() != RequestStatus.COMPLETED) throw ApiException.conflict("You can rate a donor only after a completed pickup.");
-        if (ratings.existsByRequestId(requestId)) throw ApiException.conflict("This pickup already has a rating.");
+        AppUser donor = request.getDonation().getDonor();
+        AppUser recipient = request.getRecipient();
+        boolean isDonor = donor.getId().equals(reviewer.getId());
+        boolean isRecipient = recipient.getId().equals(reviewer.getId());
+        if (!isDonor && !isRecipient) throw ApiException.forbidden("Only the donor or recipient in this pickup can leave a review.");
+        if (request.getStatus() != RequestStatus.COMPLETED) throw ApiException.conflict("You can review someone after a completed pickup.");
+        if (ratings.existsByRequestIdAndReviewerId(requestId, reviewer.getId()))
+            throw ApiException.conflict("You have already reviewed this pickup.");
         Rating rating = new Rating(); rating.setRequest(request); rating.setDonor(request.getDonation().getDonor());
-        rating.setRecipient(recipient); rating.setScore(input.score()); rating.setReview(input.review());
+        rating.setRecipient(recipient); rating.setReviewer(reviewer); rating.setTarget(isDonor ? recipient : donor);
+        rating.setScore(input.score()); rating.setReview(input.review() == null ? null : input.review().trim());
         return mapper.rating(ratings.save(rating));
     }
     @Transactional(readOnly = true)
     public List<RatingView> forDonor(Long donorId) {
-        return ratings.findByDonorIdOrderByCreatedAtDesc(donorId).stream().map(mapper::rating).toList();
+        return forProfile(donorId);
+    }
+    @Transactional(readOnly = true)
+    public List<RatingView> forProfile(Long userId) {
+        return ratings.findByTargetIdOrderByCreatedAtDesc(userId).stream().map(mapper::rating).toList();
     }
 }

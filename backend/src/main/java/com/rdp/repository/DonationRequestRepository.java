@@ -13,4 +13,5 @@ public interface DonationRequestRepository extends JpaRepository<DonationRequest
     List<DonationRequest> findByDonationIdOrderByCreatedAtDesc(Long donationId);
     List<DonationRequest> findAllByOrderByCreatedAtDesc();
     long countByStatus(RequestStatus status);
+    long countByRecipientIdAndStatus(Long recipientId, RequestStatus status);
 }

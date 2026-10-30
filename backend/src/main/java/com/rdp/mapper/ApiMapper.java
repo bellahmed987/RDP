@@ -25,11 +25,18 @@ public class ApiMapper {
         return new RequestView(r.getId(), r.getDonation().getId(), r.getDonation().getTitle(),
                 r.getDonation().getDonor().getId(), r.getDonation().getDonor().getName(),
                 r.getRecipient().getId(), r.getRecipient().getName(), r.getQuantity(), r.getMessage(),
-                r.getStatus(), r.getCreatedAt(), r.getUpdatedAt());
+                r.getStatus(), r.getCreatedAt(), r.getUpdatedAt(), false, false);
+    }
+    public RequestView request(DonationRequest r, boolean donorReviewed, boolean recipientReviewed) {
+        RequestView base = request(r);
+        return new RequestView(base.id(), base.donationId(), base.donationTitle(), base.donorId(), base.donorName(),
+                base.recipientId(), base.recipientName(), base.quantity(), base.message(), base.status(),
+                base.createdAt(), base.updatedAt(), donorReviewed, recipientReviewed);
     }
     public RatingView rating(Rating r) {
         return new RatingView(r.getId(), r.getRequest().getDonation().getId(), r.getRequest().getDonation().getTitle(),
                 r.getDonor().getId(), r.getDonor().getName(), r.getRecipient().getId(), r.getRecipient().getName(),
+                r.getReviewer().getId(), r.getReviewer().getName(), r.getTarget().getId(), r.getTarget().getName(),
                 r.getScore(), r.getReview(), r.getCreatedAt());
     }
     public MessageView message(ChatMessage m) {

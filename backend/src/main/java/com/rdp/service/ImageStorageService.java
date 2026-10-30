@@ -17,6 +17,12 @@ public class ImageStorageService {
         root = Path.of(directory).toAbsolutePath().normalize();
     }
     public String store(MultipartFile file) {
+        return "/api/uploads/" + storeImageFile(file);
+    }
+    public String storeChatImage(MultipartFile file, Long conversationId) {
+        return "/api/conversations/" + conversationId + "/attachments/" + storeImageFile(file);
+    }
+    private String storeImageFile(MultipartFile file) {
         if (file.isEmpty() || file.getSize() > 8L * 1024 * 1024) throw ApiException.badRequest("Choose an image smaller than 8 MB.");
         try {
             byte[] bytes = file.getBytes();
@@ -28,7 +34,7 @@ public class ImageStorageService {
             Files.createDirectories(root);
             String name = UUID.randomUUID() + extension;
             Files.write(root.resolve(name), bytes, StandardOpenOption.CREATE_NEW);
-            return "/api/uploads/" + name;
+            return name;
         } catch (IOException ex) {
             throw new ApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "The image could not be saved.");
         }
@@ -60,6 +66,13 @@ public class ImageStorageService {
             throw ApiException.notFound("Voice message not found.");
         Path path = root.resolve(filename).normalize();
         if (!path.startsWith(root)) throw ApiException.notFound("Voice message not found.");
+        return path;
+    }
+    public Path resolveChatAttachment(String filename) {
+        if (filename == null || !filename.matches("[a-f0-9-]{36}\\.(m4a|aac|mp3|ogg|wav|webm|png|jpg)"))
+            throw ApiException.notFound("Chat attachment not found.");
+        Path path = root.resolve(filename).normalize();
+        if (!path.startsWith(root)) throw ApiException.notFound("Chat attachment not found.");
         return path;
     }
     public Path resolve(String filename) {

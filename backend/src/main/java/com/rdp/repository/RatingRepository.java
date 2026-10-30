@@ -5,7 +5,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface RatingRepository extends JpaRepository<Rating, Long> {
-    boolean existsByRequestId(Long requestId);
+    boolean existsByRequestIdAndReviewerId(Long requestId, Long reviewerId);
+    boolean existsByRequestIdAndReviewerIdAndScoreIsNotNull(Long requestId, Long reviewerId);
+    List<Rating> findByTargetIdOrderByCreatedAtDesc(Long targetId);
+    long countByTargetId(Long targetId);
+    @org.springframework.data.jpa.repository.Query("select coalesce(avg(r.score),0) from Rating r where r.target.id = :targetId")
+    double averageForTarget(@org.springframework.data.repository.query.Param("targetId") Long targetId);
     List<Rating> findByDonorIdOrderByCreatedAtDesc(Long donorId);
     long countByDonorId(Long donorId);
     @org.springframework.data.jpa.repository.Query("select coalesce(avg(r.score),0) from Rating r where r.donor.id = :donorId")

@@ -8,13 +8,17 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.Instant;
 
 @Entity
-@Table(name = "ratings", uniqueConstraints = @UniqueConstraint(name = "uq_rating_request", columnNames = "request_id"))
+@Table(name = "ratings", uniqueConstraints = @UniqueConstraint(name = "uq_rating_request_reviewer", columnNames = {"request_id", "reviewer_id"}))
 @Getter @Setter @NoArgsConstructor
 public class Rating {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @OneToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "request_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "request_id", nullable = false)
     private DonationRequest request;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "reviewer_id", nullable = false)
+    private AppUser reviewer;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "target_id", nullable = false)
+    private AppUser target;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "donor_id", nullable = false)
     private AppUser donor;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "recipient_id", nullable = false)

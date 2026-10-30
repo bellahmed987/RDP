@@ -125,6 +125,18 @@ public class ConversationService {
     }
 
     @Transactional
+    public MessageView sendImage(String email, Long conversationId, MultipartFile file) {
+        AppUser actor = current.require(email);
+        Conversation c = findConversation(conversationId);
+        requireParticipant(c, actor);
+        ensureNotBlocked(actor, c.getDonor().getId().equals(actor.getId()) ? c.getRecipient() : c.getDonor());
+        ChatMessage message = new ChatMessage();
+        message.setKind(MessageKind.IMAGE); message.setBody("Shared an image");
+        message.setAttachmentUrl(storage.storeChatImage(file, conversationId));
+        return saveMessage(c, actor, message, "shared an image with you");
+    }
+
+    @Transactional
     public MessageView sendLocation(String email, Long conversationId, LocationShareInput input) {
         AppUser actor = current.require(email);
         Conversation c = findConversation(conversationId);

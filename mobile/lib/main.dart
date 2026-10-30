@@ -2703,6 +2703,7 @@ class _ChatPageState extends State<ChatPage> {
   final recorder = AudioRecorder();
   bool recordingVoice = false;
   bool sendingVoice = false;
+  bool sendingImage = false;
   String? voiceRecordingPath;
   Duration voiceRecordingDuration = Duration.zero;
   Timer? voiceRecordingTimer;
@@ -3278,6 +3279,44 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> sendGalleryImage() async {
+    if (blockedByMe || blockedYou || sendingImage || recordingVoice) return;
+    try {
+      final image = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 82,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (image == null || !mounted) return;
+      setState(() => sendingImage = true);
+      final response = await Api.instance.dio.post(
+        '/conversations/$conversationId/images',
+        data: FormData.fromMap({
+          'file': await MultipartFile.fromFile(
+            image.path,
+            filename: image.name,
+          ),
+        }),
+      );
+      _upsertMessage(Map<String, dynamic>.from(response.data));
+    } on DioException catch (e) {
+      if (mounted) {
+        snack(
+          context,
+          e.response?.data is Map
+              ? e.response?.data['message']?.toString() ??
+                    'Could not send this image.'
+              : 'Could not send this image. Check your connection.',
+        );
+      }
+    } catch (e) {
+      if (mounted) snack(context, 'Could not select or send this image: $e');
+    } finally {
+      if (mounted) setState(() => sendingImage = false);
+    }
+  }
+
   Future<void> shareMyLocation() async {
     if (blockedByMe || blockedYou) return;
     try {
@@ -3509,6 +3548,14 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget messageContent(Map<String, dynamic> message) {
     final kind = message['kind']?.toString() ?? 'TEXT';
+    if (kind == 'IMAGE') {
+      final path = message['attachmentUrl']?.toString() ?? '';
+      return ChatImageTile(
+        url: Uri.parse(Api.instance.dio.options.baseUrl)
+            .resolve(path)
+            .toString(),
+      );
+    }
     if (kind == 'VOICE') {
       final path = message['attachmentUrl']?.toString() ?? '';
       return VoiceMessageTile(
@@ -3810,6 +3857,21 @@ class _ChatPageState extends State<ChatPage> {
                       Row(
                         children: [
                           IconButton(
+                            tooltip: 'Choose image from gallery',
+                            onPressed: blockedByMe || blockedYou || sendingImage
+                                ? null
+                                : sendGalleryImage,
+                            icon: sendingImage
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.photo_library_outlined),
+                          ),
+                          IconButton(
                             tooltip: 'Record voice message',
                             onPressed: blockedByMe || blockedYou || sendingVoice
                                 ? null
@@ -3850,6 +3912,78 @@ class _ChatPageState extends State<ChatPage> {
         if (callLabel != null) Positioned.fill(child: _callScreen()),
       ],
     ),
+  );
+}
+
+class ChatImageTile extends StatefulWidget {
+  const ChatImageTile({super.key, required this.url});
+  final String url;
+  @override
+  State<ChatImageTile> createState() => _ChatImageTileState();
+}
+
+class _ChatImageTileState extends State<ChatImageTile> {
+  late Future<String?> token;
+
+  @override
+  void initState() {
+    super.initState();
+    token = Api.storage.read(key: 'access_token');
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<String?>(
+    future: token,
+    builder: (context, snapshot) {
+      if (!snapshot.hasData && !snapshot.hasError) {
+        return const SizedBox(
+          width: 220,
+          height: 150,
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      final headers = snapshot.data == null
+          ? null
+          : {'Authorization': 'Bearer ${snapshot.data}'};
+      Widget image({bool expanded = false}) => Image.network(
+        widget.url,
+        headers: headers,
+        fit: expanded ? BoxFit.contain : BoxFit.cover,
+        width: expanded ? null : 230,
+        height: expanded ? null : 200,
+        errorBuilder: (_, _, _) => const SizedBox(
+          width: 220,
+          height: 100,
+          child: Center(child: Icon(Icons.broken_image_outlined, size: 32)),
+        ),
+      );
+      return GestureDetector(
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (context) => Dialog.fullscreen(
+            backgroundColor: Colors.black,
+            child: Stack(
+              children: [
+                Center(child: InteractiveViewer(child: image(expanded: true))),
+                SafeArea(
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: IconButton.filledTonal(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: image(),
+        ),
+      );
+    },
   );
 }
 
@@ -4557,7 +4691,6 @@ class RequestList extends StatefulWidget {
 
 class _RequestListState extends State<RequestList> {
   late Future<dynamic> future;
-  final Set<dynamic> ratedRequests = {};
   final Set<dynamic> busyRequests = {};
   String statusFilter = 'ALL';
   @override
@@ -4725,13 +4858,20 @@ class _RequestListState extends State<RequestList> {
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  '${widget.incoming ? (r['recipientName'] ?? 'Recipient') : (r['donorName'] ?? 'Donor')} · ${r['quantity'] ?? 1} item(s)',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Color(0xff9eafb2),
-                                    fontSize: 12,
+                                InkWell(
+                                  onTap: () => openProfile(
+                                    widget.incoming
+                                        ? r['recipientId']
+                                        : r['donorId'],
+                                  ),
+                                  child: Text(
+                                    '${widget.incoming ? (r['recipientName'] ?? 'Recipient') : (r['donorName'] ?? 'Donor')} · ${r['quantity'] ?? 1} item(s)',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xff9eafb2),
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -4824,13 +4964,18 @@ class _RequestListState extends State<RequestList> {
                                 icon: const Icon(Icons.done_all_rounded),
                                 label: const Text('Mark picked up'),
                               ),
-                            if (!widget.incoming &&
-                                status == 'COMPLETED' &&
-                                !ratedRequests.contains(r['id']))
+                            if (status == 'COMPLETED' &&
+                                !(widget.incoming
+                                    ? r['donorReviewed'] == true
+                                    : r['recipientReviewed'] == true))
                               OutlinedButton.icon(
                                 onPressed: () => rate(context, r['id']),
                                 icon: const Icon(Icons.star_outline_rounded),
-                                label: const Text('Rate donor'),
+                                label: Text(
+                                  widget.incoming
+                                      ? 'Rate recipient'
+                                      : 'Rate donor',
+                                ),
                               ),
                             if (status == 'PENDING' && !widget.incoming)
                               TextButton.icon(
@@ -4925,6 +5070,14 @@ class _RequestListState extends State<RequestList> {
     }
   }
 
+  Future<void> openProfile(dynamic userId) async {
+    if (userId is! int) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => PublicProfilePage(userId: userId)),
+    );
+  }
+
   Future<void> rate(BuildContext context, dynamic requestId) async {
     var score = 5;
     final review = TextEditingController();
@@ -4932,7 +5085,7 @@ class _RequestListState extends State<RequestList> {
       context: context,
       builder: (c) => StatefulBuilder(
         builder: (c, update) => AlertDialog(
-          title: const Text('Rate your pickup'),
+          title: Text(widget.incoming ? 'Review recipient' : 'Review donor'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -4972,8 +5125,8 @@ class _RequestListState extends State<RequestList> {
         '/requests/$requestId/rating',
         data: {'score': score, 'review': review.text},
       );
-      if (mounted) setState(() => ratedRequests.add(requestId));
-      if (context.mounted) snack(context, 'Thank you for your rating.');
+      await refresh();
+      if (context.mounted) snack(context, 'Thank you for your review.');
     } on DioException catch (e) {
       if (context.mounted) {
         snack(
@@ -5453,51 +5606,66 @@ class DonorProfilePage extends StatefulWidget {
 }
 
 class _DonorProfilePageState extends State<DonorProfilePage> {
-  late Future<dynamic> future;
+  @override
+  Widget build(BuildContext context) =>
+      PublicProfilePage(userId: widget.donorId);
+}
 
+class PublicProfilePage extends StatefulWidget {
+  const PublicProfilePage({super.key, required this.userId});
+  final int userId;
+  @override
+  State<PublicProfilePage> createState() => _PublicProfilePageState();
+}
+
+class _PublicProfilePageState extends State<PublicProfilePage> {
+  late Future<dynamic> future;
   @override
   void initState() {
     super.initState();
     future = Api.instance.dio
-        .get('/donors/${widget.donorId}/profile')
-        .then((response) => response.data);
+        .get('/profiles/${widget.userId}')
+        .then((r) => r.data);
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Donor profile')),
+    appBar: AppBar(title: const Text('Community profile')),
     body: FutureBuilder<dynamic>(
       future: future,
       builder: (context, snapshot) {
-        if (snapshot.hasError) {
+        if (snapshot.hasError)
           return ErrorPane(
-            onRetry: () => setState(() {
-              future = Api.instance.dio
-                  .get('/donors/${widget.donorId}/profile')
-                  .then((response) => response.data);
-            }),
+            onRetry: () => setState(
+              () => future = Api.instance.dio
+                  .get('/profiles/${widget.userId}')
+                  .then((r) => r.data),
+            ),
           );
-        }
-        if (!snapshot.hasData) {
+        if (!snapshot.hasData)
           return const Center(child: CircularProgressIndicator());
-        }
-        final donor = Map<String, dynamic>.from(snapshot.data);
-        final name = donor['name']?.toString() ?? 'Donor';
-        final imagePath = donor['profileImageUrl']?.toString();
+        final profile = Map<String, dynamic>.from(snapshot.data);
+        final name = profile['name']?.toString() ?? 'Member';
+        final imagePath = profile['profileImageUrl']?.toString();
         final imageUrl = imagePath == null || imagePath.isEmpty
             ? null
             : Uri.parse(Api.instance.dio.options.baseUrl)
                   .resolve(imagePath)
                   .toString();
+        final isDonor = profile['role'] == 'DONOR';
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            CircleAvatar(
-              radius: 48,
-              backgroundImage: imageUrl == null ? null : NetworkImage(imageUrl),
-              child: imageUrl == null
-                  ? Text(name.characters.first.toUpperCase())
-                  : null,
+            Center(
+              child: CircleAvatar(
+                radius: 48,
+                backgroundImage: imageUrl == null
+                    ? null
+                    : NetworkImage(imageUrl),
+                child: imageUrl == null
+                    ? Text(name.characters.first.toUpperCase())
+                    : null,
+              ),
             ),
             const SizedBox(height: 12),
             Text(
@@ -5506,37 +5674,47 @@ class _DonorProfilePageState extends State<DonorProfilePage> {
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             Text(
-              donor['city']?.toString().isNotEmpty == true
-                  ? donor['city'].toString()
-                  : 'City not provided',
+              '${isDonor ? 'Donor' : 'Recipient'} · ${profile['city']?.toString().isNotEmpty == true ? profile['city'] : 'City not provided'}',
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 18),
             Card(
               child: ListTile(
-                leading: const Icon(Icons.volunteer_activism_outlined),
-                title: const Text('Listings shared'),
-                trailing: Text('${donor['listingsPosted'] ?? 0}'),
+                leading: const Icon(
+                  Icons.star_rounded,
+                  color: Color(0xffffc66d),
+                ),
+                title: Text(
+                  '${(profile['averageRating'] as num? ?? 0).toStringAsFixed(1)} / 5',
+                ),
+                subtitle: Text('${profile['reviewsReceived'] ?? 0} reviews'),
               ),
             ),
             Card(
               child: ListTile(
-                leading: const Icon(Icons.done_all),
-                title: const Text('Pickups completed'),
-                trailing: Text('${donor['pickupsCompleted'] ?? 0}'),
+                leading: Icon(
+                  isDonor ? Icons.volunteer_activism_outlined : Icons.done_all,
+                ),
+                title: Text(isDonor ? 'Listings shared' : 'Requests completed'),
+                trailing: Text(
+                  '${isDonor ? profile['listingsPosted'] ?? 0 : profile['pickupsCompleted'] ?? 0}',
+                ),
               ),
             ),
-            if (donor['joinedAt'] != null)
+            if (profile['joinedAt'] != null)
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.calendar_month_outlined),
                   title: const Text('Member since'),
-                  trailing: Text(donor['joinedAt'].toString().split('T').first),
+                  trailing: Text(
+                    profile['joinedAt'].toString().split('T').first,
+                  ),
                 ),
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            ProfileReviews(userId: widget.userId),
             OutlinedButton.icon(
-              onPressed: () => _reportPerson(context, widget.donorId, name),
+              onPressed: () => _reportPerson(context, widget.userId, name),
               icon: const Icon(Icons.flag_outlined),
               label: const Text('Report this person'),
             ),
@@ -5544,6 +5722,113 @@ class _DonorProfilePageState extends State<DonorProfilePage> {
         );
       },
     ),
+  );
+}
+
+class ProfileReviews extends StatefulWidget {
+  const ProfileReviews({super.key, required this.userId});
+  final int userId;
+  @override
+  State<ProfileReviews> createState() => _ProfileReviewsState();
+}
+
+class _ProfileReviewsState extends State<ProfileReviews> {
+  late Future<dynamic> future;
+  @override
+  void initState() {
+    super.initState();
+    future = Api.instance.dio
+        .get('/profiles/${widget.userId}/ratings')
+        .then((r) => r.data);
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<dynamic>(
+    future: future,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) return const SizedBox.shrink();
+      if (!snapshot.hasData)
+        return const Padding(
+          padding: EdgeInsets.all(12),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      final reviews = (snapshot.data as List)
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Reviews',
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          if (reviews.isEmpty)
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.rate_review_outlined),
+                title: Text('No reviews yet'),
+                subtitle: Text(
+                  'Reviews from completed pickups will appear here.',
+                ),
+              ),
+            ),
+          ...reviews.map(
+            (r) => Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            r['reviewerName']?.toString() ?? 'Community member',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 18,
+                          color: Color(0xffffc66d),
+                        ),
+                        Text(
+                          '${r['score'] ?? 0}/5',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      r['donationTitle']?.toString() ?? 'Completed pickup',
+                      style: const TextStyle(
+                        color: Color(0xff9eafb2),
+                        fontSize: 12,
+                      ),
+                    ),
+                    if ((r['review']?.toString().trim().isNotEmpty ??
+                        false)) ...[
+                      const SizedBox(height: 8),
+                      Text(r['review'].toString()),
+                    ],
+                    const SizedBox(height: 5),
+                    Text(
+                      r['createdAt']?.toString().split('T').first ?? '',
+                      style: const TextStyle(
+                        color: Color(0xff829497),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
   );
 }
 
@@ -5737,6 +6022,8 @@ class _ProfilePageState extends State<ProfilePage> {
         textAlign: TextAlign.center,
       ),
       const SizedBox(height: 20),
+      ProfileReviews(userId: (user['id'] as num?)?.toInt() ?? 0),
+      const SizedBox(height: 16),
       OutlinedButton.icon(
         onPressed: () => Navigator.push<void>(
           context,

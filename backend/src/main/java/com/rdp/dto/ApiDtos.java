@@ -34,6 +34,9 @@ public final class ApiDtos {
                            Instant createdAt) {}
     public record DonorProfileView(Long id, String name, String profileImageUrl, String city,
                                    Instant joinedAt, long listingsPosted, long pickupsCompleted) {}
+    public record PublicProfileView(Long id, String name, String profileImageUrl, String city, Role role,
+                                    Instant joinedAt, long listingsPosted, long pickupsCompleted,
+                                    long reviewsReceived, double averageRating) {}
     public record AuthResponse(String token, String tokenType, UserView user) {}
     public record ProfileUpdate(@Size(max = 120) String name, @Size(max = 32) String phone,
                                 @Size(max = 300) String address, @Size(max = 100) String city,
@@ -58,11 +61,13 @@ public final class ApiDtos {
     public record RequestInput(@NotNull @Min(1) Integer quantity, @Size(max = 1000) String message) {}
     public record RequestView(Long id, Long donationId, String donationTitle, Long donorId, String donorName,
                               Long recipientId, String recipientName, Integer quantity, String message,
-                              RequestStatus status, Instant createdAt, Instant updatedAt) {}
+                              RequestStatus status, Instant createdAt, Instant updatedAt,
+                              boolean donorReviewed, boolean recipientReviewed) {}
     public record DecisionInput(@NotNull RequestStatus status) {}
     public record RatingInput(@NotNull @Min(1) @Max(5) Integer score, @Size(max = 1200) String review) {}
     public record RatingView(Long id, Long donationId, String donationTitle, Long donorId, String donorName,
-                             Long recipientId, String recipientName, Integer score, String review, Instant createdAt) {}
+                             Long recipientId, String recipientName, Long reviewerId, String reviewerName,
+                             Long targetId, String targetName, Integer score, String review, Instant createdAt) {}
     public record ConversationView(Long id, Long requestId, Long donationId, String donationTitle,
                                    Long otherUserId, String otherUserName, String otherUserProfileImageUrl,
                                    String pickupAddress, Double pickupLatitude, Double pickupLongitude,

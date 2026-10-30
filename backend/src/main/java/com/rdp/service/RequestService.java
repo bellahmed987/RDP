@@ -16,9 +16,10 @@ public class RequestService {
     private final CurrentUserService current;
     private final ApiMapper mapper;
     private final NotificationService notifications;
+    private final RatingRepository ratings;
     public RequestService(DonationRequestRepository requests, DonationRepository donations, CurrentUserService current,
-                          ApiMapper mapper, NotificationService notifications) {
-        this.requests = requests; this.donations = donations; this.current = current; this.mapper = mapper; this.notifications = notifications;
+                          ApiMapper mapper, NotificationService notifications, RatingRepository ratings) {
+        this.requests = requests; this.donations = donations; this.current = current; this.mapper = mapper; this.notifications = notifications; this.ratings = ratings;
     }
     @Transactional
     public RequestView create(String email, Long donationId, RequestInput input) {
@@ -35,21 +36,21 @@ public class RequestService {
         request = requests.save(request);
         notifications.create(donation.getDonor(), NotificationType.NEW_REQUEST, "New donation request",
                 recipient.getName() + " requested " + donation.getTitle() + ".", request.getId());
-        return mapper.request(request);
+        return requestView(request);
     }
     @Transactional(readOnly = true)
     public List<RequestView> mine(String email) {
         AppUser recipient = requireRecipient(email);
-        return requests.findByRecipientIdOrderByCreatedAtDesc(recipient.getId()).stream().map(mapper::request).toList();
+        return requests.findByRecipientIdOrderByCreatedAtDesc(recipient.getId()).stream().map(this::requestView).toList();
     }
     @Transactional(readOnly = true)
     public List<RequestView> incoming(String email) {
         AppUser donor = requireDonor(email);
-        return requests.findByDonationDonorIdOrderByCreatedAtDesc(donor.getId()).stream().map(mapper::request).toList();
+        return requests.findByDonationDonorIdOrderByCreatedAtDesc(donor.getId()).stream().map(this::requestView).toList();
     }
     @Transactional(readOnly = true)
     public List<RequestView> allForAdmin() {
-        return requests.findAllByOrderByCreatedAtDesc().stream().map(mapper::request).toList();
+        return requests.findAllByOrderByCreatedAtDesc().stream().map(this::requestView).toList();
     }
     @Transactional(readOnly = true)
     public RequestView get(String email, Long id) {
@@ -58,7 +59,7 @@ public class RequestService {
         if (actor.getRole() != Role.ADMIN && !request.getRecipient().getId().equals(actor.getId())
                 && !request.getDonation().getDonor().getId().equals(actor.getId()))
             throw ApiException.forbidden("This request is private to its donor and recipient.");
-        return mapper.request(request);
+        return requestView(request);
     }
     @Transactional
     public RequestView decide(String email, Long id, RequestStatus decision) {
@@ -85,7 +86,7 @@ public class RequestService {
                     "Request not accepted", "The donor could not accept your request for " + donation.getTitle() + ".", request.getId());
         }
         request.setStatus(decision);
-        return mapper.request(request);
+        return requestView(request);
     }
     @Transactional
     public RequestView cancel(String email, Long id) {
@@ -94,7 +95,7 @@ public class RequestService {
         if (!request.getRecipient().getId().equals(recipient.getId())) throw ApiException.forbidden("This request belongs to another recipient.");
         if (request.getStatus() != RequestStatus.PENDING) throw ApiException.conflict("Only a pending request can be cancelled.");
         request.setStatus(RequestStatus.CANCELLED);
-        return mapper.request(request);
+        return requestView(request);
     }
     @Transactional
     public RequestView complete(String email, Long id) {
@@ -113,7 +114,7 @@ public class RequestService {
         else donation.setStatus(DonationStatus.AVAILABLE);
         notifications.create(request.getRecipient(), NotificationType.DONATION_UPDATE,
                 "Pickup completed", "The donor marked " + donation.getTitle() + " as picked up.", request.getId());
-        return mapper.request(request);
+        return requestView(request);
     }
     private AppUser requireRecipient(String email) {
         AppUser user = current.require(email);
@@ -127,4 +128,10 @@ public class RequestService {
     }
     private Donation findDonation(Long id) { return donations.findById(id).orElseThrow(() -> ApiException.notFound("Donation not found.")); }
     private DonationRequest findRequest(Long id) { return requests.findById(id).orElseThrow(() -> ApiException.notFound("Request not found.")); }
+    private RequestView requestView(DonationRequest request) {
+        Long requestId = request.getId();
+        return mapper.request(request,
+                ratings.existsByRequestIdAndReviewerId(requestId, request.getDonation().getDonor().getId()),
+                ratings.existsByRequestIdAndReviewerId(requestId, request.getRecipient().getId()));
+    }
 }

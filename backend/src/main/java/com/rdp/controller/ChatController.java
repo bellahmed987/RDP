@@ -52,12 +52,23 @@ public class ChatController {
         messaging.convertAndSend("/topic/conversations/" + id, view);
         return ResponseEntity.status(HttpStatus.CREATED).body(view);
     }
+    @PostMapping(value = "/conversations/{id}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MessageView> image(Authentication auth, @PathVariable Long id, @RequestPart("file") MultipartFile file) {
+        MessageView view = conversations.sendImage(auth.getName(), id, file);
+        messaging.convertAndSend("/topic/conversations/" + id, view);
+        return ResponseEntity.status(HttpStatus.CREATED).body(view);
+    }
     @GetMapping("/conversations/{id}/attachments/{filename}")
     public ResponseEntity<Resource> attachment(Authentication auth, @PathVariable Long id, @PathVariable String filename) throws IOException {
         conversations.authorize(id, auth.getName());
-        Path path = storage.resolveVoice(filename);
+        Path path = storage.resolveChatAttachment(filename);
         if (!Files.exists(path)) return ResponseEntity.notFound().build();
-        String type = switch (filename.substring(filename.lastIndexOf('.') + 1)) {
+        String extension = filename.substring(filename.lastIndexOf('.') + 1);
+        if (extension.equals("png")) return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG)
+                .cacheControl(CacheControl.noStore()).body(new FileSystemResource(path));
+        if (extension.equals("jpg")) return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG)
+                .cacheControl(CacheControl.noStore()).body(new FileSystemResource(path));
+        String type = switch (extension) {
             case "mp3" -> "audio/mpeg"; case "ogg" -> "audio/ogg"; case "wav" -> "audio/wav";
             case "webm" -> "audio/webm"; case "aac" -> "audio/aac"; default -> "audio/mp4";
         };

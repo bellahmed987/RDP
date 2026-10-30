@@ -19,6 +19,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the database for pre-request
 $pairChatMigration = Join-Path $root 'backend\database\migrations\20261020_one_conversation_per_pair.sql'
 Get-Content $pairChatMigration | & 'C:\xampp\mysql\bin\mysql.exe' -h localhost -u $env:DB_USERNAME resource_distribution_db
 if ($LASTEXITCODE -ne 0) { throw 'Could not prepare shared donor-recipient conversations.' }
+$ratingMigration = Join-Path $root 'backend\database\migrations\20261029_two_way_ratings.sql'
+Get-Content $ratingMigration | & 'C:\xampp\mysql\bin\mysql.exe' -h localhost -u $env:DB_USERNAME resource_distribution_db
+if ($LASTEXITCODE -ne 0) { throw 'Could not prepare two-way donation reviews.' }
 Push-Location (Join-Path $root 'backend')
 try {
     $env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot'
