@@ -25,6 +25,11 @@ public class AdminController {
     @PatchMapping("/users/{id}/status") public UserView status(@PathVariable Long id, @Valid @RequestBody UserStatusInput input) {
         return admin.status(id, input.status());
     }
+    @PatchMapping("/users/{id}/role") public UserView role(@PathVariable Long id, @Valid @RequestBody UserRoleInput input,
+                                                            org.springframework.security.core.Authentication auth) {
+        return admin.changeRole(auth.getName(), id, input.role());
+    }
+    @GetMapping("/role-changes") public List<AdminRoleChangeView> roleChanges() { return admin.recentRoleChanges(); }
     @GetMapping("/donations") public List<DonationView> donations() { return admin.donations(); }
     @GetMapping("/donations/{id}") public DonationView donation(@PathVariable Long id) { return admin.donation(id); }
     @DeleteMapping("/donations/{id}") public void removeDonation(@PathVariable Long id) { donations.adminRemove(id); }

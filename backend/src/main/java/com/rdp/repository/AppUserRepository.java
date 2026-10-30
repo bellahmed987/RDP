@@ -15,6 +15,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
     boolean existsByUsernameIgnoreCase(String username);
     boolean existsByEmailIgnoreCase(String email);
     long countByRole(Role role);
+    long countByRoleAndStatus(Role role, AccountStatus status);
     long countByStatus(AccountStatus status);
     Page<AppUser> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(String name, String email, Pageable pageable);
     Page<AppUser> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrUsernameContainingIgnoreCase(String name, String email, String username, Pageable pageable);

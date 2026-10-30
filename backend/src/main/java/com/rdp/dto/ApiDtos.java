@@ -87,6 +87,9 @@ public final class ApiDtos {
                              String reportedUserName, Long donationId, String donationTitle,
                              String reason, String details, ReportStatus status, Instant createdAt) {}
     public record UserStatusInput(@NotNull AccountStatus status) {}
+    public record UserRoleInput(@NotNull Role role) {}
+    public record AdminRoleChangeView(Long id, Long actorId, String actorName, Long targetId,
+                                      String targetName, Role previousRole, Role newRole, Instant createdAt) {}
     public record AdminStats(long totalUsers, long donors, long recipients, long activeUsers, long totalDonations,
                              long availableDonations, long completedDonations, long totalRequests, long pendingRequests,
                              long openReports, List<CategoryCount> donationsByCategory) {}

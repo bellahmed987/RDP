@@ -1024,14 +1024,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         ? ['Overview', 'Accounts', 'Listings', 'Requests', 'Reports']
         : donor
         ? ['Donations', 'Incoming requests', 'Messages', 'Profile']
-        : [
-            'Explore',
-            'My requests',
-            'Favorites',
-            'For you',
-            'Messages',
-            'Profile',
-          ];
+        : ['Explore', 'My requests', 'Messages', 'Profile'];
     final pages = admin
         ? [
             AdminPage(
@@ -1056,14 +1049,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             ProfilePage(user: widget.user),
           ]
         : [
-            DonationList(
-              mine: false,
-              onSavedPage: () => setState(() => index = 2),
-              onForYouPage: () => setState(() => index = 3),
-            ),
+            const DonationList(mine: false),
             const RequestList(incoming: false),
-            const FavoritesPage(),
-            const RecsPage(),
             const ConversationsPage(),
             ProfilePage(user: widget.user),
           ];
@@ -1082,26 +1069,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             Icons.chat_bubble_outline,
             Icons.person,
           ]
-        : [
-            Icons.explore,
-            Icons.inbox,
-            Icons.favorite,
-            Icons.auto_awesome,
-            Icons.chat_bubble_outline,
-            Icons.person,
-          ];
-    final navIndexes = role == 'RECIPIENT'
-        ? const [0, 1, 4, 5]
-        : List<int>.generate(labels.length, (i) => i);
+        : [Icons.explore, Icons.inbox, Icons.chat_bubble_outline, Icons.person];
+    final navIndexes = List<int>.generate(labels.length, (i) => i);
     return Scaffold(
       appBar: AppBar(
-        leading: role == 'RECIPIENT' && (index == 2 || index == 3)
-            ? IconButton(
-                tooltip: 'Back to Explore',
-                onPressed: () => setState(() => index = 0),
-                icon: const Icon(Icons.arrow_back_rounded),
-              )
-            : null,
+        leading: null,
         title: Row(
           children: [
             Container(
@@ -1240,15 +1212,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 }
 
 class DonationList extends StatefulWidget {
-  const DonationList({
-    super.key,
-    required this.mine,
-    this.onSavedPage,
-    this.onForYouPage,
-  });
+  const DonationList({super.key, required this.mine});
   final bool mine;
-  final VoidCallback? onSavedPage;
-  final VoidCallback? onForYouPage;
   @override
   State<DonationList> createState() => _DonationListState();
 }
@@ -1372,61 +1337,6 @@ class _DonationListState extends State<DonationList> {
     });
   }
 
-  Widget _exploreShortcut({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback? onTap,
-    required Color tone,
-  }) => Material(
-    color: tone,
-    borderRadius: BorderRadius.circular(16),
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, color: const Color(0xff20dfbd), size: 20),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Color(0xffaebdc0),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 11,
-              color: Color(0xff829497),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-
   Widget _categoryChip(String label, String? value) => Padding(
     padding: const EdgeInsets.only(right: 8),
     child: ChoiceChip(
@@ -1517,30 +1427,6 @@ class _DonationListState extends State<DonationList> {
                     ? 'Explore useful things shared by your community.'
                     : 'Showing items within ${nearbyRadius.toStringAsFixed(0)} km of your selected area.',
                 style: const TextStyle(color: Color(0xff9eafb2)),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _exploreShortcut(
-                      icon: Icons.bookmark_rounded,
-                      title: 'Saved items',
-                      subtitle: 'Your shortlist',
-                      onTap: widget.onSavedPage,
-                      tone: const Color(0xff153a36),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _exploreShortcut(
-                      icon: Icons.auto_awesome_rounded,
-                      title: 'Picked for you',
-                      subtitle: 'Personalized finds',
-                      onTap: widget.onForYouPage,
-                      tone: const Color(0xff282a25),
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
@@ -6641,6 +6527,7 @@ class UsersPage extends StatefulWidget {
 
 class _UsersPageState extends State<UsersPage> {
   late Future<dynamic> future;
+  late Future<dynamic> auditFuture;
   final search = TextEditingController();
   String statusFilter = 'ALL';
   String roleFilter = 'ALL';
@@ -6649,6 +6536,7 @@ class _UsersPageState extends State<UsersPage> {
     super.initState();
     roleFilter = widget.roleFilter ?? 'ALL';
     future = load();
+    auditFuture = loadRoleChanges();
   }
 
   @override
@@ -6665,6 +6553,9 @@ class _UsersPageState extends State<UsersPage> {
       'size': 100,
     },
   )).data;
+
+  Future<dynamic> loadRoleChanges() async =>
+      (await Api.instance.dio.get('/admin/role-changes')).data;
 
   Future<void> changeStatus(Map<String, dynamic> user, String status) async {
     final confirmed = await showDialog<bool>(
@@ -6709,6 +6600,58 @@ class _UsersPageState extends State<UsersPage> {
     }
   }
 
+  Future<void> changeRole(Map<String, dynamic> user, String role) async {
+    final promoting = role == 'ADMIN';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(promoting ? 'Make app admin?' : 'Remove app admin access?'),
+        content: Text(
+          promoting
+              ? '${user['name']} will be able to manage accounts, listings, requests, and reports across the entire app. Only promote someone you trust.'
+              : '${user['name']} will lose app-wide admin access and become a ${pretty(role).toLowerCase()}. This change will be recorded.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(promoting ? 'Make app admin' : 'Remove access'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await Api.instance.dio.patch(
+        '/admin/users/${user['id']}/role',
+        data: {'role': role},
+      );
+      if (mounted) {
+        snack(
+          context,
+          promoting ? 'App administrator added.' : 'Admin role updated.',
+        );
+        setState(() {
+          future = load();
+          auditFuture = loadRoleChanges();
+        });
+      }
+    } on DioException catch (error) {
+      if (mounted) {
+        snack(
+          context,
+          error.response?.data is Map
+              ? error.response?.data['message']?.toString() ??
+                    'Could not update account role.'
+              : 'Could not update account role.',
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
     future: future,
@@ -6735,6 +6678,61 @@ class _UsersPageState extends State<UsersPage> {
                 '${payload['totalItems'] ?? allUsers.length} accounts in the community',
           ),
           const SizedBox(height: 14),
+          FutureBuilder<dynamic>(
+            future: auditFuture,
+            builder: (context, auditSnapshot) {
+              if (!auditSnapshot.hasData || auditSnapshot.hasError) {
+                return const SizedBox.shrink();
+              }
+              final changes = (auditSnapshot.data as List)
+                  .map((row) => Map<String, dynamic>.from(row as Map))
+                  .toList();
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Recent admin role changes',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 5),
+                      if (changes.isEmpty)
+                        const Text(
+                          'Role changes will be recorded here.',
+                          style: TextStyle(color: Color(0xff9eafb2)),
+                        )
+                      else
+                        ...changes.take(5).map((change) {
+                          final promoted = change['newRole'] == 'ADMIN';
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              promoted
+                                  ? Icons.admin_panel_settings_outlined
+                                  : Icons.manage_accounts_outlined,
+                              color: const Color(0xff20dfbd),
+                            ),
+                            title: Text(
+                              '${change['actorName'] ?? 'Admin'} ${promoted ? 'made' : 'changed'} ${change['targetName'] ?? 'a user'} ${promoted ? 'an app admin' : 'to ${pretty(change['newRole']?.toString() ?? 'USER')}'}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            subtitle: Text(
+                              '${pretty(change['previousRole']?.toString() ?? 'USER')} → ${pretty(change['newRole']?.toString() ?? 'USER')} · ${change['createdAt']?.toString().split('T').first ?? ''}',
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
           TextField(
             controller: search,
             textInputAction: TextInputAction.search,
@@ -6867,18 +6865,73 @@ class _UsersPageState extends State<UsersPage> {
                         ],
                       ),
                     ),
-                    PopupMenuButton<String>(
-                      tooltip: 'Account actions',
-                      onSelected: (value) => changeStatus(user, value),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'ACTIVE', child: Text('Activate')),
-                        PopupMenuItem(
-                          value: 'SUSPENDED',
-                          child: Text('Suspend'),
+                    if ((user['id'] as num?)?.toInt() == Api.instance.userId)
+                      const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(
+                          Icons.admin_panel_settings_outlined,
+                          color: Color(0xff20dfbd),
                         ),
-                        PopupMenuItem(value: 'BANNED', child: Text('Ban')),
-                      ],
-                    ),
+                      )
+                    else
+                      PopupMenuButton<String>(
+                        tooltip: 'Account actions',
+                        onSelected: (value) {
+                          if (value.startsWith('ROLE:')) {
+                            changeRole(user, value.substring(5));
+                          } else {
+                            changeStatus(user, value);
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          if (user['role'] != 'ADMIN')
+                            const PopupMenuItem(
+                              value: 'ROLE:ADMIN',
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(
+                                  Icons.admin_panel_settings_outlined,
+                                ),
+                                title: Text('Make app admin'),
+                              ),
+                            ),
+                          if (user['role'] == 'ADMIN') ...[
+                            const PopupMenuItem(
+                              value: 'ROLE:DONOR',
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(
+                                  Icons.volunteer_activism_outlined,
+                                ),
+                                title: Text('Remove admin → Donor'),
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'ROLE:RECIPIENT',
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(Icons.person_outline),
+                                title: Text('Remove admin → Recipient'),
+                              ),
+                            ),
+                          ],
+                          if (user['role'] != 'ADMIN') ...[
+                            const PopupMenuDivider(),
+                            const PopupMenuItem(
+                              value: 'ACTIVE',
+                              child: Text('Activate'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'SUSPENDED',
+                              child: Text('Suspend'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'BANNED',
+                              child: Text('Ban'),
+                            ),
+                          ],
+                        ],
+                      ),
                   ],
                 ),
               ),
