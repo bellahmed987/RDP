@@ -62,6 +62,9 @@ public class Donation {
     @Column(nullable = false, length = 20)
     private DonationStatus status = DonationStatus.AVAILABLE;
 
+    @Column(nullable = false)
+    private boolean adminRemoved;
+
     @ElementCollection
     @CollectionTable(name = "donation_images", joinColumns = @JoinColumn(name = "donation_id"))
     @Column(name = "image_url", nullable = false, length = 500)

@@ -125,6 +125,7 @@ public class DonationService {
     public void adminRemove(Long id) {
         Donation d = find(id);
         d.setStatus(DonationStatus.CANCELLED);
+        d.setAdminRemoved(true);
         requests.findByDonationIdOrderByCreatedAtDesc(id).stream().filter(r ->
                 r.getStatus() == RequestStatus.PENDING || r.getStatus() == RequestStatus.ACCEPTED)
                 .forEach(r -> {
@@ -138,7 +139,7 @@ public class DonationService {
 
     @Transactional(readOnly = true)
     public List<DonationView> allAdmin() {
-        return donations.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+        return donations.findByAdminRemovedFalseOrderByCreatedAtDesc().stream()
                 .map(d -> mapper.donation(d, null, false)).toList();
     }
 

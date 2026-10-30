@@ -89,7 +89,7 @@ public class AdminService {
     public DonationView donation(Long id) { return donationService.findAdmin(id); }
     public AdminStats stats() {
         return new AdminStats(users.count(), users.countByRole(Role.DONOR), users.countByRole(Role.RECIPIENT),
-                users.countByStatus(AccountStatus.ACTIVE), donations.count(),
+                users.countByStatus(AccountStatus.ACTIVE), donations.countByAdminRemovedFalse(),
                 donations.countByStatus(DonationStatus.AVAILABLE), donations.countByStatus(DonationStatus.PICKED_UP),
                 requests.count(), requests.countByStatus(RequestStatus.PENDING), reports.countByStatus(ReportStatus.OPEN),
                 Arrays.stream(DonationCategory.values()).map(c ->
