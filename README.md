@@ -25,3 +25,7 @@ The local administrator and demo credentials are written to the ignored README.l
 Run .\scripts\test-all.ps1 to verify backend and mobile builds.
 
 Optional integrations and more detailed instructions are in docs/SETUP.md.
+
+## Free cloud deployment
+
+See [deploy/README.md](deploy/README.md) for the single-server deployment setup, persistent MariaDB and upload storage, HTTPS, and building an APK that connects to the public API.

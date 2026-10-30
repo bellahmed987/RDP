@@ -4,6 +4,10 @@ $env:ANDROID_HOME = 'C:\Android\Sdk'
 $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 $env:Path = "C:\src\flutter\bin;C:\Android\Sdk\platform-tools;$env:Path"
 $buildArgs = @()
+$apiBaseUrl = $env:API_BASE_URL
+if (-not [string]::IsNullOrWhiteSpace($apiBaseUrl)) {
+    $buildArgs += "--dart-define=API_BASE_URL=$apiBaseUrl"
+}
 $mapConfig = Join-Path $root 'mobile\maptiler.env.json'
 if (Test-Path $mapConfig) {
     $buildArgs += '--dart-define-from-file=maptiler.env.json'
