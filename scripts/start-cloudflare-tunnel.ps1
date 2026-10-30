@@ -27,7 +27,14 @@ Write-Host 'Starting a temporary public Cloudflare Quick Tunnel for http://local
 Write-Host 'Keep this window open. Copy the https://*.trycloudflare.com URL from the output to build the phone APK.' -ForegroundColor Yellow
 Write-Host 'The URL changes when this tunnel is restarted.' -ForegroundColor Yellow
 
-& $cloudflaredExe tunnel --url 'http://localhost:8080'
-if ($LASTEXITCODE -ne 0) {
-    throw "cloudflared exited with code $LASTEXITCODE."
+try {
+    & $cloudflaredExe tunnel --protocol http2 --url 'http://localhost:8080'
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "cloudflared exited with code $exitCode."
+    }
+} catch {
+    Write-Host "Cloudflare tunnel stopped: $_" -ForegroundColor Red
+    Read-Host 'Press Enter to close this window'
+    exit 1
 }
