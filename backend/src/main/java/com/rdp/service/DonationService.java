@@ -70,6 +70,8 @@ public class DonationService {
     @Transactional(readOnly = true)
     public DonationView get(String email, Long id) {
         Donation donation = find(id);
+        if (donation.getDonor().getStatus() != AccountStatus.ACTIVE)
+            throw ApiException.notFound("Donation not found.");
         Long userId = optionalUserId(email);
         return mapper.donation(donation, null, isFavorite(userId, id));
     }

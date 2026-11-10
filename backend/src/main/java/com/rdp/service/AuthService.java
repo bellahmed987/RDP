@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import java.text.Normalizer;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -25,6 +26,7 @@ public class AuthService {
     private final JwtService jwt;
     private final ApiMapper mapper;
     private final ConcurrentMap<String, RecoveryWindow> recoveryWindows = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ResetGrant> resetGrants = new ConcurrentHashMap<>();
     public AuthService(AppUserRepository users, PasswordEncoder passwords, AuthenticationManager authenticationManager,
                        JwtService jwt, ApiMapper mapper) {
         this.users = users; this.passwords = passwords; this.authenticationManager = authenticationManager;
@@ -109,6 +111,55 @@ public class AuthService {
         recoveryWindows.remove(key, window);
     }
 
+    @Transactional(readOnly = true)
+    public String verifyRecoveryAnswers(RecoveryVerificationInput input, String remoteAddress) {
+        String username = input.username().trim();
+        String key = username.toLowerCase(Locale.ROOT) + "|" + (remoteAddress == null ? "unknown" : remoteAddress);
+        RecoveryWindow window = recoveryWindows.computeIfAbsent(key, ignored -> new RecoveryWindow());
+        synchronized (window) {
+            long now = System.currentTimeMillis();
+            if (now - window.startedAt > 15 * 60 * 1000L) {
+                window.startedAt = now;
+                window.failures = 0;
+            }
+            if (window.failures >= 5)
+                throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many recovery attempts. Try again in 15 minutes.");
+        }
+
+        AppUser user = users.findByUsernameIgnoreCase(username).orElseGet(() ->
+                users.findByEmailIgnoreCase(username).orElse(null));
+        boolean matches = user != null && user.getSecurityAnswerHash1() != null
+                && user.getSecurityAnswerHash2() != null && user.getSecurityAnswerHash3() != null
+                && user.getSecurityAnswerHash4() != null;
+        if (matches) {
+            matches &= passwords.matches(normalizeAnswer(input.answer1()), user.getSecurityAnswerHash1());
+            matches &= passwords.matches(normalizeAnswer(input.answer2()), user.getSecurityAnswerHash2());
+            matches &= passwords.matches(normalizeAnswer(input.answer3()), user.getSecurityAnswerHash3());
+            matches &= passwords.matches(normalizeAnswer(input.answer4()), user.getSecurityAnswerHash4());
+        }
+        if (!matches) {
+            synchronized (window) { window.failures++; }
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Username or recovery answers are incorrect, or recovery has not been set up.");
+        }
+
+        recoveryWindows.remove(key, window);
+        long expiresAt = System.currentTimeMillis() + 5 * 60 * 1000L;
+        resetGrants.entrySet().removeIf(entry -> entry.getValue().expiresAt() < System.currentTimeMillis());
+        String token = UUID.randomUUID().toString();
+        resetGrants.put(token, new ResetGrant(user.getEmail(), expiresAt));
+        return token;
+    }
+
+    @Transactional
+    public void completePasswordReset(PasswordResetCompletionInput input) {
+        ResetGrant grant = resetGrants.remove(input.resetToken());
+        if (grant == null || grant.expiresAt() < System.currentTimeMillis())
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Password reset session expired. Verify your recovery answers again.");
+        AppUser user = users.findByEmailIgnoreCase(grant.email())
+                .orElseThrow(() -> ApiException.notFound("Account not found."));
+        user.setPasswordHash(passwords.encode(input.newPassword()));
+    }
+
     private void saveSecurityAnswers(AppUser user, String[] answers) {
         user.setSecurityAnswerHash1(passwords.encode(normalizeAnswer(answers[0])));
         user.setSecurityAnswerHash2(passwords.encode(normalizeAnswer(answers[1])));
@@ -125,4 +176,5 @@ public class AuthService {
         private long startedAt = System.currentTimeMillis();
         private int failures;
     }
+    private record ResetGrant(String email, long expiresAt) {}
 }

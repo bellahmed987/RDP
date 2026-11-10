@@ -32,5 +32,15 @@ public class AuthController {
         auth.resetPassword(input, request.getRemoteAddr());
         return Map.of("message", "Password updated. Sign in with your new password.");
     }
+    @PostMapping("/password/reset/verify")
+    public Map<String, String> verifyRecoveryAnswers(@Valid @RequestBody RecoveryVerificationInput input,
+                                                     HttpServletRequest request) {
+        return Map.of("resetToken", auth.verifyRecoveryAnswers(input, request.getRemoteAddr()));
+    }
+    @PostMapping("/password/reset/complete")
+    public Map<String, String> completePasswordReset(@Valid @RequestBody PasswordResetCompletionInput input) {
+        auth.completePasswordReset(input);
+        return Map.of("message", "Password updated. Sign in with your new password.");
+    }
     @PostMapping("/logout") public Map<String, String> logout() { return Map.of("message", "Signed out. Remove the access token from this device."); }
 }

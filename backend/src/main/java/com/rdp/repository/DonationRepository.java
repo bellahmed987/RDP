@@ -11,6 +11,7 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
     @Query("""
         select d from Donation d
         where d.status = com.rdp.entity.DonationStatus.AVAILABLE
+          and d.donor.status = com.rdp.entity.AccountStatus.ACTIVE
           and d.availableQuantity > 0
           and (:category is null or d.category = :category)
           and (:city is null or lower(d.city) = lower(:city))

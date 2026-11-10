@@ -38,6 +38,11 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
         }
         if (command == StompCommand.SUBSCRIBE || command == StompCommand.SEND) {
             String destination = accessor.getDestination();
+            if (command == StompCommand.SUBSCRIBE && "/user/queue/calls".equals(destination)) {
+                if (accessor.getUser() == null)
+                    throw new MessageDeliveryException(message, "Authentication is required.");
+                return message;
+            }
             Matcher matcher = destination == null ? null : CHAT_DESTINATION.matcher(destination);
             if (matcher == null || !matcher.matches())
                 throw new MessageDeliveryException(message, "Only private conversation destinations are allowed.");

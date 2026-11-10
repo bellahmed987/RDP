@@ -156,8 +156,18 @@ public class ConversationService {
         Conversation c = findConversation(conversationId);
         requireParticipant(c, actor);
         ensureNotBlocked(actor, c.getDonor().getId().equals(actor.getId()) ? c.getRecipient() : c.getDonor());
-        return Map.of("event", "call", "signalType", signalType, "senderId", actor.getId(),
+        return Map.of("event", "call", "conversationId", conversationId, "signalType", signalType, "senderId", actor.getId(),
                 "senderName", actor.getName(), "signal", data == null ? Map.of() : data);
+    }
+
+    @Transactional(readOnly = true)
+    public String callRecipientEmail(Long conversationId, String email) {
+        AppUser actor = current.require(email);
+        Conversation conversation = findConversation(conversationId);
+        requireParticipant(conversation, actor);
+        return conversation.getDonor().getId().equals(actor.getId())
+                ? conversation.getRecipient().getEmail()
+                : conversation.getDonor().getEmail();
     }
 
     private MessageView saveMessage(Conversation c, AppUser actor, ChatMessage message, String action) {

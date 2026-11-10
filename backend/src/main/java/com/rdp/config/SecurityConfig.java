@@ -36,6 +36,7 @@ public class SecurityConfig {
                 .authenticationProvider(provider)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/password/reset",
+                                "/api/auth/password/reset/verify", "/api/auth/password/reset/complete",
                                 "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
                                 "/actuator/health", "/ws/**", "/api/uploads/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/donations/**").permitAll()

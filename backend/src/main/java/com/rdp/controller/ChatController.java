@@ -91,7 +91,8 @@ public class ChatController {
         String type = input.get("signalType") == null ? "" : input.get("signalType").toString();
         @SuppressWarnings("unchecked") Map<String, Object> data = input.get("signal") instanceof Map<?, ?> map
                 ? (Map<String, Object>) map : Map.of();
-        messaging.convertAndSend("/topic/conversations/" + conversationId,
-                conversations.callSignal(conversationId, auth.getName(), type, data));
+        Map<String, Object> callEvent = conversations.callSignal(conversationId, auth.getName(), type, data);
+        String recipient = conversations.callRecipientEmail(conversationId, auth.getName());
+        messaging.convertAndSendToUser(recipient, "/queue/calls", callEvent);
     }
 }

@@ -697,7 +697,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                   Expanded(
                                     child: _roleChoice(
                                       'RECIPIENT',
-                                      'Find items',
+                                      'Recipient',
                                       Icons.search_rounded,
                                     ),
                                   ),
@@ -705,7 +705,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                   Expanded(
                                     child: _roleChoice(
                                       'DONOR',
-                                      'Share items',
+                                      'Donor',
                                       Icons.volunteer_activism_outlined,
                                     ),
                                   ),
@@ -915,6 +915,179 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
+class AppCallSignal {
+  const AppCallSignal({required this.conversationId, required this.data});
+  final int conversationId;
+  final Map<String, dynamic> data;
+}
+
+class AppCallSignaling {
+  AppCallSignaling._();
+  static final instance = AppCallSignaling._();
+  final signals = StreamController<AppCallSignal>.broadcast();
+  final conversations = <int, Map<String, dynamic>>{};
+  final _pendingSignals = <int, List<Map<String, dynamic>>>{};
+  final _openChatStack = <int>[];
+  WebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _socketSubscription;
+  Timer? _refreshTimer;
+  Timer? _retryTimer;
+  Timer? _handshakeTimer;
+  bool _connected = false;
+  bool _connecting = false;
+  bool _stopped = true;
+
+  int? get activeConversationId =>
+      _openChatStack.isEmpty ? null : _openChatStack.last;
+
+  Future<void> start() async {
+    _stopped = false;
+    await refreshConversations();
+    _refreshTimer ??= Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => refreshConversations(),
+    );
+    await _connect();
+  }
+
+  Future<void> refreshConversations() async {
+    try {
+      final response = await Api.instance.dio.get('/conversations');
+      for (final raw in (response.data as List)) {
+        final conversation = Map<String, dynamic>.from(raw as Map);
+        final id = (conversation['id'] as num?)?.toInt();
+        if (id == null) continue;
+        conversations[id] = conversation;
+      }
+    } on DioException {
+      // Retry on the next timer tick or when the app resumes.
+    }
+  }
+
+  void watchConversation(Map<String, dynamic> conversation) {
+    final id = (conversation['id'] as num?)?.toInt();
+    if (id == null) return;
+    conversations[id] = conversation;
+  }
+
+  void setChatOpen(int conversationId) {
+    _openChatStack.remove(conversationId);
+    _openChatStack.add(conversationId);
+  }
+
+  void setChatClosed(int conversationId) {
+    _openChatStack.remove(conversationId);
+  }
+
+  List<Map<String, dynamic>> takePendingSignals(int conversationId) =>
+      _pendingSignals.remove(conversationId) ?? const [];
+
+  Future<void> _connect() async {
+    if (_stopped ||
+        _connecting ||
+        _connected ||
+        Api.instance.dio.options.headers['Authorization'] == null) {
+      return;
+    }
+    _connecting = true;
+    try {
+      final base = Uri.parse(Api.instance.dio.options.baseUrl);
+      final uri = base.replace(
+        scheme: base.scheme == 'https' ? 'wss' : 'ws',
+        path: '/ws',
+        query: null,
+      );
+      final socket = WebSocketChannel.connect(uri);
+      _channel = socket;
+      await socket.ready;
+      final auth =
+          Api.instance.dio.options.headers['Authorization']?.toString() ?? '';
+      socket.sink.add(
+        'CONNECT\naccept-version:1.2\nhost:${uri.host}\nAuthorization:$auth\n\n\u0000',
+      );
+      _socketSubscription = socket.stream.listen(
+        (frame) {
+          final text = frame.toString();
+          if (text.startsWith('CONNECTED')) {
+            _connecting = false;
+            _connected = true;
+            _handshakeTimer?.cancel();
+            _handshakeTimer = null;
+            _retryTimer?.cancel();
+            _channel?.sink.add(
+              'SUBSCRIBE\nid:app-calls\ndestination:/user/queue/calls\nack:auto\n\n\u0000',
+            );
+          } else if (text.startsWith('MESSAGE')) {
+            _receive(text);
+          } else if (text.startsWith('ERROR')) {
+            _scheduleReconnect();
+          }
+        },
+        onError: (_) => _scheduleReconnect(),
+        onDone: _scheduleReconnect,
+      );
+      _handshakeTimer = Timer(const Duration(seconds: 12), () {
+        if (_connecting) _scheduleReconnect();
+      });
+    } catch (_) {
+      _scheduleReconnect();
+    }
+  }
+
+  void _receive(String frame) {
+    final separator = frame.indexOf('\n\n');
+    if (separator < 0) return;
+    try {
+      final data = Map<String, dynamic>.from(
+        jsonDecode(
+          frame.substring(separator + 2).replaceAll('\u0000', '').trim(),
+        ) as Map,
+      );
+      if (data['event'] != 'call') return;
+      final conversationId = (data['conversationId'] as num?)?.toInt();
+      if (conversationId == null) return;
+      if (activeConversationId != conversationId) {
+        _pendingSignals.putIfAbsent(conversationId, () => []).add(data);
+      }
+      signals.add(AppCallSignal(conversationId: conversationId, data: data));
+    } catch (_) {}
+  }
+
+  void _scheduleReconnect() {
+    if (_stopped) return;
+    _connected = false;
+    _connecting = false;
+    _handshakeTimer?.cancel();
+    _handshakeTimer = null;
+    _socketSubscription?.cancel();
+    _channel?.sink.close();
+    _channel = null;
+    _retryTimer ??= Timer(const Duration(seconds: 5), () {
+      _retryTimer = null;
+      _connect();
+    });
+  }
+
+  void stop() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _handshakeTimer?.cancel();
+    _handshakeTimer = null;
+    _stopped = true;
+    _socketSubscription?.cancel();
+    _socketSubscription = null;
+    _channel?.sink.close();
+    _channel = null;
+    _connected = false;
+    _connecting = false;
+    _openChatStack.clear();
+    _pendingSignals.clear();
+    conversations.clear();
+  }
+}
+
 class Home extends StatefulWidget {
   const Home({super.key, required this.user, required this.onSignOut});
   final Map<String, dynamic> user;
@@ -931,12 +1104,18 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   bool notificationBaselineReady = false;
   bool checkingNotifications = false;
   Timer? notificationTimer;
+  StreamSubscription<AppCallSignal>? callSignalsSubscription;
+  final Set<int> openingIncomingCalls = {};
   final myDonationsKey = GlobalKey<_DonationListState>();
 
   @override
   void initState() {
     super.initState();
     PushNotifications.registerDevice();
+    callSignalsSubscription = AppCallSignaling.instance.signals.stream.listen(
+      _openIncomingCall,
+    );
+    unawaited(AppCallSignaling.instance.start());
     WidgetsBinding.instance.addObserver(this);
     if (!PushNotifications.firebaseReady) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -958,13 +1137,45 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   @override
   void dispose() {
     notificationTimer?.cancel();
+    callSignalsSubscription?.cancel();
+    AppCallSignaling.instance.stop();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
+  void _openIncomingCall(AppCallSignal event) {
+    if (event.data['signalType'] != 'offer' ||
+        (event.data['senderId'] as num?)?.toInt() == Api.instance.userId ||
+        AppCallSignaling.instance.activeConversationId ==
+            event.conversationId ||
+        !openingIncomingCalls.add(event.conversationId)) {
+      return;
+    }
+    unawaited(_openIncomingConversation(event.conversationId));
+  }
+
+  Future<void> _openIncomingConversation(int conversationId) async {
+    var conversation = AppCallSignaling.instance.conversations[conversationId];
+    if (conversation == null) {
+      await AppCallSignaling.instance.refreshConversations();
+      conversation = AppCallSignaling.instance.conversations[conversationId];
+    }
+    if (!mounted || conversation == null) {
+      openingIncomingCalls.remove(conversationId);
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => ChatPage(conversation: conversation!)),
+    );
+    openingIncomingCalls.remove(conversationId);
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refreshNotifications();
+    if (state == AppLifecycleState.resumed) {
+      _refreshNotifications();
+      unawaited(AppCallSignaling.instance.start());
+    }
   }
 
   Future<void> _refreshNotifications({bool notifyNew = true}) async {
@@ -1540,11 +1751,67 @@ class _DonationListState extends State<DonationList> {
                     })
                     .toList();
             if (items.isEmpty) {
+              if (widget.mine) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 380),
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff141c20),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: const Color(0xff2a383c)),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 68,
+                            height: 68,
+                            decoration: const BoxDecoration(
+                              color: Color(0xff123a34),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.volunteer_activism_rounded,
+                              size: 32,
+                              color: Color(0xff20dfbd),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No listings yet',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 7),
+                          const Text(
+                            'Give a useful item a new home by creating your first listing.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Color(0xff9eafb2)),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () => showDialog(
+                                context: context,
+                                builder: (_) => DonationForm(onSaved: refresh),
+                              ),
+                              icon: const Icon(Icons.add_rounded),
+                              label: const Text('Create first listing'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
               return EmptyPane(
-                title: widget.mine ? 'No donations yet' : 'No resources found',
-                subtitle: widget.mine
-                    ? 'Tap + to publish one.'
-                    : 'Try another search.',
+                title: 'No resources found',
+                subtitle: 'Try another search.',
               );
             }
             if (mapView) {
@@ -2635,6 +2902,7 @@ class _ChatPageState extends State<ChatPage> {
   final scroll = ScrollController();
   final List<Map<String, dynamic>> messages = [];
   WebSocketChannel? channel;
+  StreamSubscription<AppCallSignal>? appCallSubscription;
   Timer? messageRefreshTimer;
   bool connected = false;
   String? error;
@@ -2665,6 +2933,26 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
+    AppCallSignaling.instance.watchConversation(widget.conversation);
+    AppCallSignaling.instance.setChatOpen(conversationId);
+    appCallSubscription = AppCallSignaling.instance.signals.stream.listen((
+      event,
+    ) {
+      if (event.conversationId == conversationId) {
+        unawaited(handleCallSignal(event.data));
+      }
+    });
+    final pendingSignals = AppCallSignaling.instance.takePendingSignals(
+      conversationId,
+    );
+    if (pendingSignals.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final signal in pendingSignals) {
+          if (!mounted) break;
+          unawaited(handleCallSignal(signal));
+        }
+      });
+    }
     load();
     connect();
     loadBlockStatus();
@@ -2843,9 +3131,7 @@ class _ChatPageState extends State<ChatPage> {
                 .trim();
             try {
               final item = Map<String, dynamic>.from(jsonDecode(body));
-              if (item['event'] == 'call') {
-                handleCallSignal(item);
-              } else if (mounted) {
+              if (item['event'] != 'call' && mounted) {
                 _upsertMessage(item);
               }
             } catch (_) {}
@@ -3520,6 +3806,8 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    appCallSubscription?.cancel();
+    AppCallSignaling.instance.setChatClosed(conversationId);
     channel?.sink.close();
     messageRefreshTimer?.cancel();
     voiceRecordingTimer?.cancel();
@@ -6090,7 +6378,9 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
   final newPassword = TextEditingController();
   final confirmPassword = TextEditingController();
   bool busy = false;
+  int step = 0;
   bool completed = false;
+  String? resetToken;
   String? error;
 
   @override
@@ -6104,15 +6394,7 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
     super.dispose();
   }
 
-  Future<void> reset() async {
-    if (newPassword.text.length < 10 || newPassword.text.length > 72) {
-      setState(() => error = 'Choose a password between 10 and 72 characters.');
-      return;
-    }
-    if (newPassword.text != confirmPassword.text) {
-      setState(() => error = 'The new passwords do not match.');
-      return;
-    }
+  Future<void> verifyAnswers() async {
     if (answers.any((answer) => answer.text.trim().isEmpty)) {
       setState(() => error = 'Please answer all four recovery questions.');
       return;
@@ -6122,16 +6404,52 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
       error = null;
     });
     try {
-      await Api.instance.dio.post(
-        '/auth/password/reset',
+      final response = await Api.instance.dio.post(
+        '/auth/password/reset/verify',
         data: {
           'username': username.text.trim(),
           'answer1': answers[0].text.trim(),
           'answer2': answers[1].text.trim(),
           'answer3': answers[2].text.trim(),
           'answer4': answers[3].text.trim(),
-          'newPassword': newPassword.text,
         },
+      );
+      if (!mounted) return;
+      setState(() {
+        resetToken = response.data['resetToken']?.toString();
+        step = 2;
+      });
+    } on DioException catch (e) {
+      if (mounted) {
+        setState(
+          () => error = e.response?.data is Map
+              ? e.response!.data['message']?.toString() ??
+                    'Username or recovery answers are incorrect.'
+              : 'Cannot reach the server.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> reset() async {
+    if (newPassword.text.length < 10 || newPassword.text.length > 72) {
+      setState(() => error = 'Choose a password between 10 and 72 characters.');
+      return;
+    }
+    if (newPassword.text != confirmPassword.text) {
+      setState(() => error = 'The new passwords do not match.');
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await Api.instance.dio.post(
+        '/auth/password/reset/complete',
+        data: {'resetToken': resetToken, 'newPassword': newPassword.text},
       );
       if (mounted) setState(() => completed = true);
     } on DioException catch (e) {
@@ -6150,7 +6468,22 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Reset password')),
+    appBar: AppBar(
+      title: const Text('Reset password'),
+      leading: step > 0 && !completed
+          ? IconButton(
+              tooltip: 'Back',
+              onPressed: busy
+                  ? null
+                  : () => setState(() {
+                      step--;
+                      error = null;
+                      if (step < 2) resetToken = null;
+                    }),
+              icon: const Icon(Icons.arrow_back_rounded),
+            )
+          : null,
+    ),
     body: completed
         ? Center(
             child: Padding(
@@ -6173,33 +6506,82 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
         : ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              const Text(
-                'Enter your username and the four answers you saved when setting up recovery.',
+              Text(
+                'STEP ${step + 1} OF 3',
+                style: const TextStyle(
+                  color: Color(0xff20dfbd),
+                  fontSize: 11,
+                  letterSpacing: 1.1,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: username,
-                decoration: const InputDecoration(labelText: 'Username'),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: (step + 1) / 3,
+                  minHeight: 5,
+                ),
               ),
-              for (var i = 0; i < recoveryQuestions.length; i++)
+              const SizedBox(height: 22),
+              Text(
+                switch (step) {
+                  0 => 'Find your account',
+                  1 => 'Verify your answers',
+                  _ => 'Choose a new password',
+                },
+                style: Theme.of(context).textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(switch (step) {
+                0 => 'Enter the username you use to sign in.',
+                1 => 'Answer the four questions you set when creating your account.',
+                _ => 'Your answers were verified. Set and confirm your new password.',
+              }, style: const TextStyle(color: Color(0xff9eafb2))),
+              const SizedBox(height: 18),
+              if (step == 0)
                 TextField(
-                  controller: answers[i],
-                  decoration: InputDecoration(labelText: recoveryQuestions[i]),
+                  controller: username,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    prefixIcon: Icon(Icons.alternate_email_rounded),
+                  ),
                 ),
-              TextField(
-                controller: newPassword,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'New password (10–72 characters)',
+              if (step == 1)
+                for (var i = 0; i < recoveryQuestions.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: TextField(
+                      controller: answers[i],
+                      decoration: InputDecoration(
+                        labelText: recoveryQuestions[i],
+                        prefixIcon: const Icon(Icons.shield_outlined),
+                      ),
+                    ),
+                  ),
+              if (step == 2) ...[
+                TextField(
+                  controller: newPassword,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'New password (10–72 characters)',
+                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                  ),
                 ),
-              ),
-              TextField(
-                controller: confirmPassword,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm new password',
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmPassword,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm new password',
+                    prefixIcon: Icon(Icons.lock_reset_rounded),
+                  ),
                 ),
-              ),
+              ],
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -6212,9 +6594,30 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
                 ),
               const SizedBox(height: 16),
               FilledButton(
-                onPressed: busy ? null : reset,
+                onPressed: busy
+                    ? null
+                    : switch (step) {
+                        0 => () {
+                          if (username.text.trim().isEmpty) {
+                            setState(() => error = 'Enter your username.');
+                          } else {
+                            setState(() {
+                              step = 1;
+                              error = null;
+                            });
+                          }
+                        },
+                        1 => verifyAnswers,
+                        _ => reset,
+                      },
                 child: Text(
-                  busy ? 'Checking answers…' : 'Verify answers and reset',
+                  busy
+                      ? (step == 1 ? 'Checking answers…' : 'Updating…')
+                      : switch (step) {
+                          0 => 'Continue',
+                          1 => 'Verify answers',
+                          _ => 'Update password',
+                        },
                 ),
               ),
             ],
@@ -6558,13 +6961,21 @@ class _UsersPageState extends State<UsersPage> {
       (await Api.instance.dio.get('/admin/role-changes')).data;
 
   Future<void> changeStatus(Map<String, dynamic> user, String status) async {
+    final userStatus = user['status']?.toString() ?? 'ACTIVE';
+    final actionDescription = switch (status) {
+      'SUSPENDED' => 'This temporarily blocks sign-in and hides their active listings. Pending requests will be cancelled. You can restore access later.',
+      'BANNED' => 'This permanently blocks sign-in and hides their listings. Open requests will be cancelled, and this action cannot be reversed. Account and history records will be kept for admin review.',
+      _ => userStatus == 'BANNED' ? 'Banned accounts cannot be reactivated.' : 'This restores access and makes the user’s active listings visible again. Requests cancelled during suspension will stay cancelled.',
+    };
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('${pretty(status)} account?'),
-        content: Text(
-          'Change ${user['name']} to ${pretty(status).toLowerCase()}?',
-        ),
+        title: Text(switch (status) {
+          'SUSPENDED' => 'Suspend account temporarily?',
+          'BANNED' => 'Permanently ban account?',
+          _ => 'Restore account access?',
+        }),
+        content: Text('${user['name']}: $actionDescription'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -6572,7 +6983,11 @@ class _UsersPageState extends State<UsersPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text('Confirm ${pretty(status).toLowerCase()}'),
+            child: Text(switch (status) {
+              'SUSPENDED' => 'Suspend temporarily',
+              'BANNED' => 'Ban permanently',
+              _ => 'Restore access',
+            }),
           ),
         ],
       ),
@@ -6584,7 +6999,11 @@ class _UsersPageState extends State<UsersPage> {
         data: {'status': status},
       );
       if (mounted) {
-        snack(context, 'Account status updated.');
+        snack(context, switch (status) {
+          'SUSPENDED' => 'Account suspended. Active listings are hidden.',
+          'BANNED' => 'Account permanently banned. Listings are hidden.',
+          _ => 'Account restored. Active listings are visible again.',
+        });
         setState(() => future = load());
       }
     } on DioException catch (error) {
@@ -6873,6 +7292,18 @@ class _UsersPageState extends State<UsersPage> {
                           color: Color(0xff20dfbd),
                         ),
                       )
+                    else if (user['status'] == 'BANNED' &&
+                        user['role'] != 'ADMIN')
+                      const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Tooltip(
+                          message: 'Permanently banned',
+                          child: Icon(
+                            Icons.gavel_rounded,
+                            color: Color(0xffff8794),
+                          ),
+                        ),
+                      )
                     else
                       PopupMenuButton<String>(
                         tooltip: 'Account actions',
@@ -6917,17 +7348,19 @@ class _UsersPageState extends State<UsersPage> {
                           ],
                           if (user['role'] != 'ADMIN') ...[
                             const PopupMenuDivider(),
-                            const PopupMenuItem(
-                              value: 'ACTIVE',
-                              child: Text('Activate'),
-                            ),
-                            const PopupMenuItem(
-                              value: 'SUSPENDED',
-                              child: Text('Suspend'),
-                            ),
+                            if (user['status'] == 'SUSPENDED')
+                              const PopupMenuItem(
+                                value: 'ACTIVE',
+                                child: Text('Restore access'),
+                              ),
+                            if (user['status'] == 'ACTIVE')
+                              const PopupMenuItem(
+                                value: 'SUSPENDED',
+                                child: Text('Suspend temporarily'),
+                              ),
                             const PopupMenuItem(
                               value: 'BANNED',
-                              child: Text('Ban'),
+                              child: Text('Ban permanently'),
                             ),
                           ],
                         ],

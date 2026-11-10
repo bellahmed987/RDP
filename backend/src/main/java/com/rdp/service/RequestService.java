@@ -25,6 +25,8 @@ public class RequestService {
     public RequestView create(String email, Long donationId, RequestInput input) {
         AppUser recipient = requireRecipient(email);
         Donation donation = findDonation(donationId);
+        if (donation.getDonor().getStatus() != AccountStatus.ACTIVE)
+            throw ApiException.notFound("This donation is no longer available.");
         if (donation.getDonor().getId().equals(recipient.getId())) throw ApiException.forbidden("You cannot request your own donation.");
         if (donation.getStatus() != DonationStatus.AVAILABLE || donation.getAvailableQuantity() < input.quantity())
             throw ApiException.conflict("This donation is not available in that quantity.");

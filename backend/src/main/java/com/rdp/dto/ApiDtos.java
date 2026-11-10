@@ -28,6 +28,13 @@ public final class ApiDtos {
                                         @NotBlank @Size(max = 120) String answer3,
                                         @NotBlank @Size(max = 120) String answer4,
                                         @NotBlank @Size(min = 10, max = 72) String newPassword) {}
+    public record RecoveryVerificationInput(@NotBlank String username,
+                                            @NotBlank @Size(max = 120) String answer1,
+                                            @NotBlank @Size(max = 120) String answer2,
+                                            @NotBlank @Size(max = 120) String answer3,
+                                            @NotBlank @Size(max = 120) String answer4) {}
+    public record PasswordResetCompletionInput(@NotBlank String resetToken,
+                                               @NotBlank @Size(min = 10, max = 72) String newPassword) {}
     public record UserView(Long id, String name, String username, String email, String phone, String profileImageUrl,
                            String address, String city, Double latitude, Double longitude,
                            Role role, AccountStatus status, List<DonationCategory> preferredCategories,

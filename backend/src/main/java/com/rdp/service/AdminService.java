@@ -43,10 +43,48 @@ public class AdminService {
         AppUser user = users.findById(id).orElseThrow(() -> ApiException.notFound("User not found."));
         if (user.getRole() == Role.ADMIN && status != AccountStatus.ACTIVE)
             throw ApiException.badRequest("The development admin cannot be suspended or banned through this screen.");
+        if (user.getStatus() == AccountStatus.BANNED && status != AccountStatus.BANNED)
+            throw ApiException.conflict("A banned account cannot be reactivated or suspended. Ban is permanent.");
+        if (user.getStatus() == status) return mapper.user(user);
+        if (status == AccountStatus.SUSPENDED || status == AccountStatus.BANNED)
+            restrictOpenRequests(user, status == AccountStatus.BANNED);
         user.setStatus(status);
         notifications.create(user, NotificationType.ADMIN_ACTION, "Account status updated",
-                "An administrator changed your account status to " + status + ".", user.getId());
+                status == AccountStatus.ACTIVE
+                        ? "An administrator restored your account. Your active listings are visible again."
+                        : status == AccountStatus.SUSPENDED
+                                ? "Your account is suspended. Your listings are hidden until an administrator restores access."
+                                : "Your account was permanently banned. Its listings are hidden and open requests were cancelled.",
+                user.getId());
         return mapper.user(user);
+    }
+
+    private void restrictOpenRequests(AppUser user, boolean cancelAccepted) {
+        java.util.Set<Long> processed = new java.util.HashSet<>();
+        for (DonationRequest request : requests.findByRecipientIdOrderByCreatedAtDesc(user.getId()))
+            restrictRequest(request, user, cancelAccepted, processed);
+        for (DonationRequest request : requests.findByDonationDonorIdOrderByCreatedAtDesc(user.getId()))
+            restrictRequest(request, user, cancelAccepted, processed);
+    }
+
+    private void restrictRequest(DonationRequest request, AppUser restrictedUser, boolean cancelAccepted,
+                                 java.util.Set<Long> processed) {
+        if (!processed.add(request.getId())) return;
+        RequestStatus current = request.getStatus();
+        if (current != RequestStatus.PENDING && !(cancelAccepted && current == RequestStatus.ACCEPTED)) return;
+
+        if (current == RequestStatus.ACCEPTED) {
+            Donation donation = request.getDonation();
+            donation.setAvailableQuantity(donation.getAvailableQuantity() + request.getQuantity());
+            if (donation.getStatus() == DonationStatus.RESERVED && !donation.isAdminRemoved())
+                donation.setStatus(DonationStatus.AVAILABLE);
+        }
+        request.setStatus(RequestStatus.CANCELLED);
+        AppUser otherParty = request.getRecipient().getId().equals(restrictedUser.getId())
+                ? request.getDonation().getDonor() : request.getRecipient();
+        notifications.create(otherParty, NotificationType.ADMIN_ACTION, "Request cancelled",
+                "A request for " + request.getDonation().getTitle()
+                        + " was cancelled because an account involved was restricted.", request.getId());
     }
     @Transactional
     public UserView changeRole(String actorEmail, Long targetId, Role newRole) {
