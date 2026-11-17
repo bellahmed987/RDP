@@ -1473,7 +1473,31 @@ class _DonationListState extends State<DonationList> {
               if (category != null) 'category': category,
             },
           );
-    return r.data;
+    final data = r.data;
+    if (widget.mine || Api.instance.role != 'RECIPIENT') return data;
+
+    final myRequests = await Api.instance.dio.get('/requests/mine');
+    final requestedIds = <int>{
+      for (final request in (myRequests.data as List))
+        if (request is Map && request['donationId'] is num)
+          (request['donationId'] as num).toInt(),
+    };
+    Map<String, dynamic> withRequestState(dynamic value) {
+      final donation = Map<String, dynamic>.from(value as Map);
+      donation['_requestedByCurrentUser'] = requestedIds.contains(
+        (donation['id'] as num?)?.toInt(),
+      );
+      return donation;
+    }
+
+    if (data is List) return data.map(withRequestState).toList();
+    if (data is Map && data['items'] is List) {
+      return {
+        ...Map<String, dynamic>.from(data),
+        'items': (data['items'] as List).map(withRequestState).toList(),
+      };
+    }
+    return data;
   }
 
   void refresh() {
@@ -2284,7 +2308,8 @@ class _DonationCardState extends State<DonationCard> {
                   ),
                 if (!widget.isOwner &&
                     Api.instance.role == 'RECIPIENT' &&
-                    status == 'AVAILABLE') ...[
+                    (status == 'AVAILABLE' ||
+                        item['_requestedByCurrentUser'] == true)) ...[
                   const SizedBox(height: 14),
                   Row(
                     children: [
@@ -2299,9 +2324,19 @@ class _DonationCardState extends State<DonationCard> {
                       Expanded(
                         flex: 2,
                         child: FilledButton.icon(
-                          onPressed: () => request(context),
-                          icon: const Icon(Icons.volunteer_activism_rounded),
-                          label: const Text('Request item'),
+                          onPressed: item['_requestedByCurrentUser'] == true
+                              ? null
+                              : () => request(context),
+                          icon: Icon(
+                            item['_requestedByCurrentUser'] == true
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.volunteer_activism_rounded,
+                          ),
+                          label: Text(
+                            item['_requestedByCurrentUser'] == true
+                                ? 'Requested'
+                                : 'Request item',
+                          ),
                         ),
                       ),
                     ],
@@ -2488,6 +2523,9 @@ class _DonationCardState extends State<DonationCard> {
         '/donations/${item['id']}/requests',
         data: {'quantity': int.tryParse(qty.text) ?? 1, 'message': msg.text},
       );
+      if (mounted) {
+        setState(() => item['_requestedByCurrentUser'] = true);
+      }
       if (context.mounted) snack(context, 'Request sent.');
     } on DioException catch (e) {
       if (context.mounted) {
@@ -8182,11 +8220,19 @@ class _ChatbotPageState extends State<ChatbotPage> {
   final List<Map<String, String>> messages = [];
   bool busy = false;
   final suggestions = const [
-    'Show my requests',
-    'What is available near me?',
-    'How do I post an item?',
-    'How do reviews work?',
+    ('Show my requests', Icons.inventory_2_outlined),
+    ('What is available near me?', Icons.location_searching_rounded),
+    ('How do I post an item?', Icons.add_box_outlined),
+    ('How do reviews work?', Icons.star_outline_rounded),
   ];
+
+  void startNewChat() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      messages.clear();
+      input.clear();
+    });
+  }
 
   Future<void> send([String? prompt]) async {
     final question = (prompt ?? input.text).trim();
@@ -8279,6 +8325,14 @@ class _ChatbotPageState extends State<ChatbotPage> {
           ),
         ],
       ),
+      actions: [
+        if (messages.isNotEmpty)
+          IconButton(
+            tooltip: 'Start a new chat',
+            onPressed: busy ? null : startNewChat,
+            icon: const Icon(Icons.add_comment_outlined),
+          ),
+      ],
     ),
     body: Column(
       children: [
@@ -8288,35 +8342,92 @@ class _ChatbotPageState extends State<ChatbotPage> {
                   padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(22),
+                      padding: const EdgeInsets.all(21),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xff153831), Color(0xff172329)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xff16453c), Color(0xff172329)],
                         ),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: const Color(0xff28554c)),
+                        borderRadius: BorderRadius.circular(25),
+                        border: Border.all(color: const Color(0xff2b6659)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x2613d6b2),
+                            blurRadius: 24,
+                            offset: Offset(0, 10),
+                          ),
+                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const CircleAvatar(
-                            radius: 27,
-                            backgroundColor: Color(0xff20dfbd),
-                            child: Icon(
-                              Icons.smart_toy_rounded,
-                              size: 30,
-                              color: Color(0xff0c1916),
-                            ),
+                          Row(
+                            children: [
+                              Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff20dfbd),
+                                  borderRadius: BorderRadius.circular(17),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x4420dfbd),
+                                      blurRadius: 18,
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.smart_toy_rounded,
+                                  size: 28,
+                                  color: Color(0xff0c1916),
+                                ),
+                              ),
+                              const SizedBox(width: 13),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'SHAREKIND HELPER',
+                                      style: TextStyle(
+                                        color: Color(0xff65ead2),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.1,
+                                      ),
+                                    ),
+                                    SizedBox(height: 3),
+                                    Text(
+                                      'Here for your next step',
+                                      style: TextStyle(
+                                        color: Color(0xffd9e8e5),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.circle,
+                                size: 9,
+                                color: Color(0xff62e7a1),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 22),
                           Text(
-                            'How can I help?',
+                            'What can I help you with?',
                             style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w900),
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -.4,
+                                ),
                           ),
                           const SizedBox(height: 7),
                           const Text(
-                            'Ask about your requests, available items, or how to use ShareKind.',
+                            'Get help with listings, requests, pickup, and using ShareKind.',
                             style: TextStyle(
                               color: Color(0xffb6c7c7),
                               height: 1.45,
@@ -8325,9 +8436,9 @@ class _ChatbotPageState extends State<ChatbotPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: 23),
                     const Text(
-                      'TRY ASKING',
+                      'QUICK HELP',
                       style: TextStyle(
                         color: Color(0xff8fa4a5),
                         fontSize: 11,
@@ -8336,21 +8447,64 @@ class _ChatbotPageState extends State<ChatbotPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 9,
-                      runSpacing: 9,
-                      children: suggestions
-                          .map(
-                            (prompt) => ActionChip(
-                              avatar: const Icon(
-                                Icons.arrow_outward_rounded,
-                                size: 15,
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final cardWidth = (constraints.maxWidth - 10) / 2;
+                        return Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: suggestions.map((suggestion) {
+                            final prompt = suggestion.$1;
+                            return SizedBox(
+                              width: cardWidth,
+                              child: Material(
+                                color: const Color(0xff151d21),
+                                borderRadius: BorderRadius.circular(17),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(17),
+                                  onTap: busy ? null : () => send(prompt),
+                                  child: Container(
+                                    constraints: const BoxConstraints(
+                                      minHeight: 88,
+                                    ),
+                                    padding: const EdgeInsets.all(13),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(17),
+                                      border: Border.all(
+                                        color: const Color(0xff29383c),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Icon(
+                                          suggestion.$2,
+                                          color: const Color(0xff20dfbd),
+                                          size: 20,
+                                        ),
+                                        const SizedBox(height: 11),
+                                        Text(
+                                          prompt,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            height: 1.25,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
-                              label: Text(prompt),
-                              onPressed: busy ? null : () => send(prompt),
-                            ),
-                          )
-                          .toList(),
+                            );
+                          }).toList(),
+                        );
+                      },
                     ),
                   ],
                 )
@@ -8386,58 +8540,112 @@ class _ChatbotPageState extends State<ChatbotPage> {
                     }
                     final message = messages[index];
                     final mine = message['who'] == 'user';
-                    return Align(
-                      alignment: mine
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.sizeOf(context).width * .82,
-                        ),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 15,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: mine
-                              ? const Color(0xff138f7a)
-                              : const Color(0xff192327),
-                          border: mine
-                              ? null
-                              : Border.all(color: const Color(0xff29383c)),
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(19),
-                            topRight: const Radius.circular(19),
-                            bottomLeft: Radius.circular(mine ? 19 : 5),
-                            bottomRight: Radius.circular(mine ? 5 : 19),
-                          ),
-                        ),
-                        child: !mine
-                            ? Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Padding(
-                                    padding: EdgeInsets.only(right: 8, top: 1),
-                                    child: Icon(
-                                      Icons.smart_toy_rounded,
-                                      size: 18,
-                                      color: Color(0xff20dfbd),
-                                    ),
-                                  ),
-                                  Flexible(
-                                    child: Text(
-                                      message['text'] ?? '',
-                                      style: const TextStyle(height: 1.45),
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : Text(
-                                message['text'] ?? '',
-                                style: const TextStyle(height: 1.4),
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 15),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisAlignment: mine
+                            ? MainAxisAlignment.end
+                            : MainAxisAlignment.start,
+                        children: [
+                          if (!mine) ...[
+                            Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: const Color(0xff153a34),
+                                borderRadius: BorderRadius.circular(11),
                               ),
+                              child: const Icon(
+                                Icons.smart_toy_rounded,
+                                size: 17,
+                                color: Color(0xff20dfbd),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          Flexible(
+                            child: Column(
+                              crossAxisAlignment: mine
+                                  ? CrossAxisAlignment.end
+                                  : CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 4,
+                                    right: 4,
+                                    bottom: 4,
+                                  ),
+                                  child: Text(
+                                    mine ? 'YOU' : 'SHAREKIND HELPER',
+                                    style: TextStyle(
+                                      color: mine
+                                          ? const Color(0xff9eafb2)
+                                          : const Color(0xff62d9c5),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: .8,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 15,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: mine
+                                        ? const Color(0xff138f7a)
+                                        : const Color(0xff192327),
+                                    border: mine
+                                        ? null
+                                        : Border.all(
+                                            color: const Color(0xff29383c),
+                                          ),
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: const Radius.circular(19),
+                                      topRight: const Radius.circular(19),
+                                      bottomLeft: Radius.circular(
+                                        mine ? 19 : 5,
+                                      ),
+                                      bottomRight: Radius.circular(
+                                        mine ? 5 : 19,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    message['text'] ?? '',
+                                    style: TextStyle(
+                                      height: 1.45,
+                                      color: mine
+                                          ? Colors.white
+                                          : const Color(0xffe2ecea),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (mine) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: const Color(0xff173a35),
+                                borderRadius: BorderRadius.circular(11),
+                                border: Border.all(
+                                  color: const Color(0xff23675b),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.person_rounded,
+                                size: 17,
+                                color: Color(0xff8de8d8),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     );
                   },
@@ -8454,13 +8662,18 @@ class _ChatbotPageState extends State<ChatbotPage> {
                     controller: input,
                     minLines: 1,
                     maxLines: 4,
+                    onChanged: (_) => setState(() {}),
                     onSubmitted: (_) => send(),
                     decoration: InputDecoration(
-                      hintText: 'Ask about requests or listings…',
+                      hintText: 'Ask your ShareKind helper…',
+                      prefixIcon: const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        size: 19,
+                      ),
                       filled: true,
                       fillColor: const Color(0xff151d21),
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
+                        horizontal: 14,
                         vertical: 13,
                       ),
                       border: OutlineInputBorder(
@@ -8477,13 +8690,17 @@ class _ChatbotPageState extends State<ChatbotPage> {
                 const SizedBox(width: 9),
                 IconButton.filled(
                   tooltip: 'Send message',
-                  onPressed: busy ? null : send,
+                  onPressed: busy || input.text.trim().isEmpty ? null : send,
                   style: IconButton.styleFrom(
                     backgroundColor: const Color(0xff20dfbd),
                     foregroundColor: const Color(0xff0a1714),
                     fixedSize: const Size(50, 50),
                   ),
-                  icon: const Icon(Icons.arrow_upward_rounded),
+                  icon: Icon(
+                    busy
+                        ? Icons.hourglass_top_rounded
+                        : Icons.arrow_upward_rounded,
+                  ),
                 ),
               ],
             ),
